@@ -542,14 +542,17 @@ if st.session_state.result:
     st.markdown("""
     <div style="background:#f5f0e8;border:1px solid #e8e3da;border-left:4px solid #c9a84c;
                 padding:20px 24px;border-radius:4px;margin-top:16px">
-        <h4 style="margin:0 0 8px 0;color:#1a2332">📊 Noch mehr Potenzial: ReviewRadar Professional</h4>
+        <h4 style="margin:0 0 8px 0;color:#1a2332">📊 Noch mehr Potenzial: ReviewRadar 2.0</h4>
         <p style="margin:0 0 8px 0;color:#4a5568;font-size:14px">
-        Analysieren Sie automatisch alle Ihre Gästebewertungen von Booking.com, TripAdvisor & Google — 
-        und erfahren Sie was Gäste wirklich denken. Inklusive monatlichem Report.</p>
-        <p style="margin:0;font-size:14px"><strong style="color:#c9a84c">€ 490 einmalig</strong> 
-        &nbsp;—&nbsp; kein Abo, keine laufenden Kosten.
-        &nbsp;|&nbsp; <a href="mailto:kontakt@gernot-riedel.com?subject=ReviewRadar Anfrage" 
-        style="color:#3d7a5e">Mehr erfahren →</a></p>
+        Verwandeln Sie Ihre Gästebewertungen in garantierten Mehrumsatz. ReviewRadar 2.0 analysiert 
+        bis zu 800 Bewertungen von Booking.com, Google, TripAdvisor & HolidayCheck — und liefert 
+        Ihnen einen klaren Aktionsplan mit ROI-Kalkulation. Einmalig, kein Abo, keine laufenden Kosten.</p>
+        <p style="margin:0;font-size:14px">
+        <strong style="color:#c9a84c">ab € 149</strong> &nbsp;—&nbsp; 
+        3 Pakete: Quick Insight € 149 | Professional € 349 | Premium € 599 &nbsp;|&nbsp; 
+        <a href="https://gernot-riedel.com/hotelbewertungen-analyse-mehr-umsatz-direktbuchungen-reviewradar/" 
+        target="_blank" style="color:#3d7a5e;font-weight:600">Alle Pakete & Details →</a>
+        </p>
     </div>
     """, unsafe_allow_html=True)
 
