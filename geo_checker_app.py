@@ -37,7 +37,7 @@ def analyze_website(name, ort, url, typ, content):
     """
 
     response = client.messages.create(
-        model="claude-3-5-sonnet-20241022", # Oder dein bevorzugtes Modell
+        model="model="claude-3-5-sonnet-latest", # Oder dein bevorzugtes Modell
         max_tokens=4000,
         system=system_prompt,
         messages=[{"role": "user", "content": user_prompt}]
