@@ -212,6 +212,21 @@ Antworte NUR als valides JSON ohne Markdown:
     return json.loads(text)
 
 # ─── PDF GENERATOR ───
+def sanitize(text):
+    if not text:
+        return ""
+    replacements = {
+        '\u2013': '-', '\u2014': '-', '\u2018': "'", '\u2019': "'",
+        '\u201c': '"', '\u201d': '"', '\u2026': '...', '\u2022': '*',
+        '\u00e4': 'ae', '\u00f6': 'oe', '\u00fc': 'ue',
+        '\u00c4': 'Ae', '\u00d6': 'Oe', '\u00dc': 'Ue',
+        '\u00df': 'ss', '\u00e9': 'e', '\u00e8': 'e', '\u00e0': 'a',
+        '\u2192': '->', '\u00b0': 'Grad', '\u20ac': 'EUR',
+    }
+    for k, v in replacements.items():
+        text = text.replace(k, v)
+    return text.encode('latin-1', errors='replace').decode('latin-1')
+
 def generate_pdf(r):
     pdf = FPDF()
     pdf.add_page()
@@ -227,11 +242,11 @@ def generate_pdf(r):
     pdf.set_font("Helvetica", "", 12)
     pdf.set_text_color(201, 168, 76)
     pdf.set_x(15)
-    pdf.cell(0, 8, r["hotelName"], ln=True)
+    pdf.cell(0, 8, sanitize(r["hotelName"]), ln=True)
     pdf.set_font("Helvetica", "", 9)
     pdf.set_text_color(180, 190, 200)
     pdf.set_x(15)
-    pdf.cell(0, 6, f"{r['location']} | {r['type']} | Erstellt am {r['date']}", ln=True)
+    pdf.cell(0, 6, sanitize(f"{r['location']} | {r['type']} | Erstellt am {r['date']}"), ln=True)
 
     # Score
     score = r["gesamtscore"]
@@ -252,7 +267,7 @@ def generate_pdf(r):
     pdf.set_text_color(80, 80, 80)
     pdf.set_font("Helvetica", "I", 10)
     pdf.set_x(15)
-    pdf.multi_cell(180, 6, r.get("zusammenfassung", ""), fill=True)
+    pdf.multi_cell(180, 6, sanitize(r.get("zusammenfassung", "")), fill=True)
     pdf.ln(8)
 
     # Faktoren
@@ -274,7 +289,7 @@ def generate_pdf(r):
         pdf.set_font("Helvetica", "B", 10)
         pdf.set_text_color(26, 35, 50)
         pdf.set_x(15)
-        pdf.cell(140, 6, f["name"])
+        pdf.cell(140, 6, sanitize(f["name"]))
         pdf.set_text_color(r_c, g_c, b_c)
         pdf.cell(0, 6, f"{score_f}/10", ln=True)
 
@@ -288,7 +303,7 @@ def generate_pdf(r):
         pdf.set_font("Helvetica", "", 9)
         pdf.set_text_color(100, 110, 120)
         pdf.set_x(15)
-        pdf.multi_cell(180, 5, f["kommentar"])
+        pdf.multi_cell(180, 5, sanitize(f["kommentar"]))
         pdf.ln(3)
 
     # Quick Wins
@@ -316,11 +331,11 @@ def generate_pdf(r):
         pdf.set_font("Helvetica", "", 10)
         pdf.set_text_color(26, 35, 50)
         pdf.set_x(48)
-        pdf.multi_cell(157, 6, w["massnahme"])
+        pdf.multi_cell(157, 6, sanitize(w["massnahme"]))
         pdf.set_font("Helvetica", "I", 9)
         pdf.set_text_color(61, 122, 94)
         pdf.set_x(48)
-        pdf.cell(0, 5, "-> " + w["impact"], ln=True)
+        pdf.cell(0, 5, sanitize("-> " + w["impact"]), ln=True)
         pdf.ln(2)
 
     # Footer CTA
