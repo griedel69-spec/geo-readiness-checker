@@ -238,6 +238,16 @@ Antworte NUR als valides JSON ohne Markdown:
         messages=[{"role": "user", "content": prompt}]
     )
     text = message.content[0].text.strip()
+    # Robuste JSON-Extraktion — entfernt Markdown-Backticks falls vorhanden
+    if "```" in text:
+        text = text.split("```")[1]
+        if text.startswith("json"):
+            text = text[4:]
+    # Finde erstes { und letztes } 
+    start = text.find("{")
+    end = text.rfind("}") + 1
+    if start >= 0 and end > start:
+        text = text[start:end]
     return json.loads(text)
 
 # ─── PDF GENERATOR ───
