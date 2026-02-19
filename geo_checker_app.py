@@ -486,13 +486,70 @@ if st.session_state.result:
         use_container_width=True
     )
 
-    # CTA
+    # CTA — Detailberatung
     st.markdown("""
     <div class="cta-box">
-        <h3 style="color:#c9a84c;margin:0 0 8px 0">Detailberatung anfragen</h3>
-        <p style="color:rgba(255,255,255,0.75);margin:0 0 16px 0">
-        Gernot Riedel erstellt Ihnen einen vollständigen Umsetzungsplan mit konkreten Textvorschlägen und einem 90-Tage-Aktionsplan.</p>
-        <p style="color:white;font-weight:600">📧 kontakt@gernot-riedel.com &nbsp;|&nbsp; 📞 +43 676 7237811</p>
+        <h3 style="color:#c9a84c;margin:0 0 8px 0">🚀 Jetzt GEO-Optimierungspaket anfordern</h3>
+        <p style="color:rgba(255,255,255,0.85);margin:0 0 6px 0;font-size:16px">
+        <strong style="color:white">Nur € 149</strong> — Sie erhalten fertige, sofort einsetzbare Optimierungstexte:</p>
+        <p style="color:rgba(255,255,255,0.75);margin:0 0 16px 0;font-size:14px">
+        ✅ 10 FAQ-Fragen mit Antworten &nbsp;|&nbsp; ✅ Optimierte H1-Texte &nbsp;|&nbsp; 
+        ✅ USP-Box für Startseite &nbsp;|&nbsp; ✅ 20 lokale Keywords<br>
+        Umsetzung durch Sie, Ihren Mitarbeiter oder Ihre Webagentur.
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # Beratungsanfrage Button
+    if "anfrage_gesendet" not in st.session_state:
+        st.session_state.anfrage_gesendet = False
+
+    if not st.session_state.anfrage_gesendet:
+        if st.button("📩 Ja, ich möchte das GEO-Optimierungspaket für € 149", use_container_width=True, type="primary"):
+            with st.spinner("Ihre Anfrage wird verarbeitet..."):
+                try:
+                    import requests as req
+                    webhook_url = st.secrets.get("ZAPIER_WEBHOOK_URL", "")
+                    
+                    payload = {
+                        "betrieb": r["hotelName"],
+                        "ort": r["location"],
+                        "email": r["email"],
+                        "website": r["url"],
+                        "typ": r["type"],
+                        "score": r["gesamtscore"],
+                        "datum": r["date"],
+                        "zusammenfassung": r.get("zusammenfassung", ""),
+                        "faktoren": json.dumps(r["faktoren"], ensure_ascii=False),
+                        "quickwins": json.dumps(r["quickwins"], ensure_ascii=False),
+                        "produkt": "GEO-Optimierungspaket",
+                        "preis": "149 EUR"
+                    }
+                    
+                    if webhook_url:
+                        req.post(webhook_url, json=payload, timeout=10)
+                    
+                    st.session_state.anfrage_gesendet = True
+                    st.rerun()
+                    
+                except Exception as e:
+                    st.error(f"Fehler beim Senden: {e}")
+    else:
+        st.success("✅ Perfekt! Ihre Anfrage ist bei Gernot Riedel eingegangen. Sie erhalten innerhalb von 24 Stunden Ihre fertigen Optimierungstexte per E-Mail.")
+        st.info("📧 Bei Fragen: kontakt@gernot-riedel.com | 📞 +43 676 7237811")
+
+    # ReviewRadar Upsell
+    st.markdown("""
+    <div style="background:#f5f0e8;border:1px solid #e8e3da;border-left:4px solid #c9a84c;
+                padding:20px 24px;border-radius:4px;margin-top:16px">
+        <h4 style="margin:0 0 8px 0;color:#1a2332">📊 Noch mehr Potenzial: ReviewRadar Professional</h4>
+        <p style="margin:0 0 8px 0;color:#4a5568;font-size:14px">
+        Analysieren Sie automatisch alle Ihre Gästebewertungen von Booking.com, TripAdvisor & Google — 
+        und erfahren Sie was Gäste wirklich denken. Inklusive monatlichem Report.</p>
+        <p style="margin:0;font-size:14px"><strong style="color:#c9a84c">€ 490 einmalig</strong> 
+        &nbsp;—&nbsp; kein Abo, keine laufenden Kosten.
+        &nbsp;|&nbsp; <a href="mailto:kontakt@gernot-riedel.com?subject=ReviewRadar Anfrage" 
+        style="color:#3d7a5e">Mehr erfahren →</a></p>
     </div>
     """, unsafe_allow_html=True)
 
