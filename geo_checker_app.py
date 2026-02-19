@@ -182,6 +182,19 @@ Bewerte EXAKT diese 5 Faktoren auf einer Skala von 0–10:
 4. NAP-Konsistenz (Name, Adresse, Telefon - Vollständigkeit & Konsistenz)
 5. USP-Klarheit (Was macht diesen Betrieb einzigartig?)
 
+Erstelle zusätzlich das komplette GEO-Optimierungspaket Professional:
+
+FAQ: 10 konkrete Fragen+Antworten speziell fuer diesen Betrieb, KI-optimiert, auf Deutsch
+H1_NEU: Optimierter H1-Titel fuer die Startseite (max 70 Zeichen, mit Ort und USP)
+H1_SUB: Optimierte Subheadline (max 120 Zeichen)
+USP_BOX: 4 Alleinstellungsmerkmale mit Emoji, Titel und 1 Satz Beschreibung
+KEYWORDS: 20 lokale Keywords fuer die Region
+GOOGLE_BUSINESS: Fertiger Beschreibungstext fuer Google Business Profil (max 750 Zeichen, keyword-reich)
+META_START: Meta-Description fuer Startseite (max 155 Zeichen)
+META_ZIMMER: Meta-Description fuer Zimmer-Seite (max 155 Zeichen)
+META_PREISE: Meta-Description fuer Preise/Angebote-Seite (max 155 Zeichen)
+UEBER_UNS: Vollstaendiger "Ueber uns" Text neu geschrieben (250-300 Woerter, KI-lesbar, mit Geschichte, Lage, USPs)
+
 Antworte NUR als valides JSON ohne Markdown:
 {{
   "gesamtscore": <Zahl 0-50>,
@@ -199,13 +212,29 @@ Antworte NUR als valides JSON ohne Markdown:
     {{"prioritaet": "kurz", "massnahme": "<Maßnahme>", "impact": "<Effekt>"}},
     {{"prioritaet": "mittel", "massnahme": "<Maßnahme>", "impact": "<Effekt>"}}
   ],
-  "zusammenfassung": "<2-3 Sätze Gesamtbewertung>"
+  "zusammenfassung": "<2-3 Saetze Gesamtbewertung>",
+  "paket": {{
+    "faq": [
+      {{"frage": "<Frage>", "antwort": "<Antwort>"}}
+    ],
+    "h1_neu": "<Optimierter H1-Titel>",
+    "h1_sub": "<Optimierte Subheadline>",
+    "usp_box": [
+      {{"emoji": "<Emoji>", "titel": "<Titel>", "text": "<1 Satz>"}}
+    ],
+    "keywords": ["<keyword1>", "<keyword2>"],
+    "google_business": "<Fertiger Google Business Text>",
+    "meta_start": "<Meta-Description Startseite>",
+    "meta_zimmer": "<Meta-Description Zimmer>",
+    "meta_preise": "<Meta-Description Preise>",
+    "ueber_uns": "<Vollstaendiger Ueber uns Text>"
+  }}
 }}"""
 
     client = anthropic.Anthropic(api_key=api_key)
     message = client.messages.create(
         model="claude-opus-4-5",
-        max_tokens=1500,
+        max_tokens=4000,
         messages=[{"role": "user", "content": prompt}]
     )
     text = message.content[0].text.strip()
@@ -486,16 +515,76 @@ if st.session_state.result:
         use_container_width=True
     )
 
+    # ─── PAKET TEASER (kein Inhalt sichtbar) ───
+    paket = r.get("paket", {})
+    if paket:
+        st.markdown("---")
+        st.markdown("""
+        <div style="background:linear-gradient(135deg,#1a2332,#2d4a3e);padding:28px 28px 24px;
+                    border-radius:8px;margin-bottom:8px">
+            <h3 style="color:#c9a84c;margin:0 0 12px 0">
+                📦 Ihr persönliches GEO-Optimierungspaket ist fertig
+            </h3>
+            <p style="color:rgba(255,255,255,0.9);margin:0 0 16px 0;font-size:15px;line-height:1.7">
+            Basierend auf dieser Analyse wurde für Ihren Betrieb ein 
+            <strong style="color:white">vollständiges Optimierungspaket</strong> erstellt —
+            mit allen Texten die Sie, ein Mitarbeiter oder Ihre Webagentur 
+            direkt in Ihre Website einbauen können.
+            </p>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px">
+                <div style="background:rgba(255,255,255,0.08);padding:10px 14px;border-radius:6px;
+                            border-left:3px solid #c9a84c">
+                    <div style="color:#c9a84c;font-size:11px;font-weight:700;letter-spacing:1px">LIEFERUNG 1</div>
+                    <div style="color:white;font-size:14px;margin-top:2px">📋 10 FAQ-Fragen + Antworten</div>
+                </div>
+                <div style="background:rgba(255,255,255,0.08);padding:10px 14px;border-radius:6px;
+                            border-left:3px solid #c9a84c">
+                    <div style="color:#c9a84c;font-size:11px;font-weight:700;letter-spacing:1px">LIEFERUNG 2</div>
+                    <div style="color:white;font-size:14px;margin-top:2px">🏷️ H1-Titel + Subheadline neu</div>
+                </div>
+                <div style="background:rgba(255,255,255,0.08);padding:10px 14px;border-radius:6px;
+                            border-left:3px solid #c9a84c">
+                    <div style="color:#c9a84c;font-size:11px;font-weight:700;letter-spacing:1px">LIEFERUNG 3</div>
+                    <div style="color:white;font-size:14px;margin-top:2px">⭐ USP-Box mit 4 Alleinstellungsmerkmalen</div>
+                </div>
+                <div style="background:rgba(255,255,255,0.08);padding:10px 14px;border-radius:6px;
+                            border-left:3px solid #c9a84c">
+                    <div style="color:#c9a84c;font-size:11px;font-weight:700;letter-spacing:1px">LIEFERUNG 4</div>
+                    <div style="color:white;font-size:14px;margin-top:2px">🔍 20 lokale Keywords</div>
+                </div>
+                <div style="background:rgba(255,255,255,0.08);padding:10px 14px;border-radius:6px;
+                            border-left:3px solid #c9a84c">
+                    <div style="color:#c9a84c;font-size:11px;font-weight:700;letter-spacing:1px">LIEFERUNG 5</div>
+                    <div style="color:white;font-size:14px;margin-top:2px">📍 Google Business Profil-Text</div>
+                </div>
+                <div style="background:rgba(255,255,255,0.08);padding:10px 14px;border-radius:6px;
+                            border-left:3px solid #c9a84c">
+                    <div style="color:#c9a84c;font-size:11px;font-weight:700;letter-spacing:1px">LIEFERUNG 6</div>
+                    <div style="color:white;font-size:14px;margin-top:2px">🔗 3 Meta-Descriptions</div>
+                </div>
+                <div style="background:rgba(255,255,255,0.08);padding:10px 14px;border-radius:6px;
+                            border-left:3px solid #c9a84c;grid-column:span 2">
+                    <div style="color:#c9a84c;font-size:11px;font-weight:700;letter-spacing:1px">LIEFERUNG 7</div>
+                    <div style="color:white;font-size:14px;margin-top:2px">📖 "Über uns" — komplett neu geschrieben (KI-optimiert)</div>
+                </div>
+            </div>
+            <p style="color:rgba(255,255,255,0.6);margin:0;font-size:13px;font-style:italic">
+            ✉️ Alle 7 Lieferungen erhalten Sie als fertig formatiertes Dokument per E-Mail —
+            innerhalb von 24 Stunden nach Ihrer Anfrage.
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+
     # CTA — Detailberatung
     st.markdown("""
     <div class="cta-box">
-        <h3 style="color:#c9a84c;margin:0 0 8px 0">🚀 Jetzt GEO-Optimierungspaket anfordern</h3>
-        <p style="color:rgba(255,255,255,0.85);margin:0 0 6px 0;font-size:16px">
-        <strong style="color:white">Nur € 149</strong> — Sie erhalten fertige, sofort einsetzbare Optimierungstexte:</p>
-        <p style="color:rgba(255,255,255,0.75);margin:0 0 16px 0;font-size:14px">
-        ✅ 10 FAQ-Fragen mit Antworten &nbsp;|&nbsp; ✅ Optimierte H1-Texte &nbsp;|&nbsp; 
-        ✅ USP-Box für Startseite &nbsp;|&nbsp; ✅ 20 lokale Keywords<br>
-        Umsetzung durch Sie, Ihren Mitarbeiter oder Ihre Webagentur.
+        <h3 style="color:#c9a84c;margin:0 0 8px 0">🚀 GEO-Optimierungspaket Professional — € 149</h3>
+        <p style="color:rgba(255,255,255,0.85);margin:0 0 6px 0;font-size:15px">
+        Alle 7 Lieferungen oben als fertiges Dokument — von Ihnen, einem Mitarbeiter oder Ihrer Webagentur umsetzbar:</p>
+        <p style="color:rgba(255,255,255,0.75);margin:0 0 16px 0;font-size:13px">
+        ✅ 10 FAQ-Fragen &nbsp;|&nbsp; ✅ H1-Titel + Subheadline &nbsp;|&nbsp; ✅ USP-Box &nbsp;|&nbsp;
+        ✅ 20 Keywords &nbsp;|&nbsp; ✅ Google Business Text &nbsp;|&nbsp;
+        ✅ 3 Meta-Descriptions &nbsp;|&nbsp; ✅ Über uns neu
         </p>
     </div>
     """, unsafe_allow_html=True)
