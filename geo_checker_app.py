@@ -162,8 +162,9 @@ def get_api_key():
 
 # ─── MULTI-PAGE CRAWLER ───
 def crawl_website(base_url):
-    """Crawlt die wichtigsten Seiten einer Hotel-Website."""
+    """Crawlt die wichtigsten Seiten einer Hotel-Website via Sitemap + direkte FAQ-Suche."""
     import requests
+    import re
     from html.parser import HTMLParser
     from urllib.parse import urljoin, urlparse
 
@@ -214,58 +215,134 @@ def crawl_website(base_url):
         "Accept-Language": "de-AT,de;q=0.9"
     }
 
-    priority_patterns = [
-        "faq", "fragen", "haeufig", "service", "kontakt", "contact",
+    faq_patterns = ["faq", "haeufig", "faq.html", "faq.php"]
+    # WICHTIG: "fragen" NICHT in faq_patterns - "unverbindlich-anfragen" wuerde sonst faelschlich matchen!
+    content_patterns = [
         "zimmer", "rooms", "appartement", "wohnung", "suite",
-        "ueber", "about", "uns", "lage", "location", "anreise",
-        "wellness", "spa", "angebot", "preise", "prices",
-        "aktivitaet", "activities", "sommer", "winter", "region"
+        "ueber", "about", "uns", "lage", "anreise",
+        "wellness", "spa", "angebot", "preise",
+        "aktivitaet", "sommer", "winter", "service",
+        "gut-zu-wissen", "buchungsinformation"
     ]
 
     pages_content = {}
 
     def fetch_page(url):
         try:
-            resp = requests.get(url, headers=headers, timeout=8, allow_redirects=True)
+            resp = requests.get(url, headers=headers, timeout=10, allow_redirects=True)
             if resp.status_code == 200 and "text/html" in resp.headers.get("content-type", ""):
+                html = resp.text
                 parser = TextExtractor()
-                parser.feed(resp.text)
-                return parser.get_text()[:3000], parser.headings[:15], parser.links
+                parser.feed(html)
+                text = parser.get_text()
+
+                # Accordion/JS-FAQ Extraktion (Next.js, React, etc.)
+                faq_spans = re.findall(r'<span>([^<]{15,200}\?)</span>', html)
+                if faq_spans:
+                    text = text + "\n\nFAQ-FRAGEN AUF DIESER SEITE:\n" + "\n".join(f"- {q}" for q in faq_spans[:30])
+
+                return text[:4000], parser.headings[:20], parser.links
         except Exception:
             pass
         return None, [], []
 
-    # Startseite
+    def get_urls_from_sitemap(base):
+        """Liest Sitemap und gibt alle URLs der Domain zurueck."""
+        found_urls = []
+        sitemap_candidates = [
+            base + "/sitemap.xml",
+            base + "/sitemap_index.xml",
+            base + "/sitemap.php",
+        ]
+        for sitemap_url in sitemap_candidates:
+            try:
+                r = requests.get(sitemap_url, headers=headers, timeout=8)
+                if r.status_code == 200:
+                    urls = re.findall(r'<loc>(https?://[^<]+)</loc>', r.text)
+                    for u in urls:
+                        if base_domain in u and u not in found_urls:
+                            found_urls.append(u)
+                    if found_urls:
+                        break
+            except Exception:
+                pass
+        return found_urls
+
+    # --- SCHRITT 1: Startseite ---
     text, headings, links = fetch_page(base_url)
     if text:
         pages_content["Startseite"] = {"text": text, "headings": headings}
 
-    # Unterseiten filtern
-    seen_urls = {base_url}
-    priority_urls = []
+    # --- SCHRITT 2: Sitemap lesen (zuverlaessigste Methode) ---
+    sitemap_urls = get_urls_from_sitemap(base_url)
+
+    # --- SCHRITT 3: FAQ-Seiten IMMER zuerst und garantiert crawlen ---
+    faq_crawled = False
+    faq_candidates = []
+
+    # Sprache: Deutsch bevorzugen (DACH-Markt), dann Eingabe-URL, dann alles andere
+    input_path = urlparse(base_url).path.lower()
+
+    # Aus Sitemap - Deutsche Version immer bevorzugt
+    de_faq = []
+    other_faq = []
+    for u in sitemap_urls:
+        path_lower = urlparse(u).path.lower()
+        if any(p in path_lower for p in faq_patterns):
+            if "/de/" in path_lower or path_lower.endswith("/de"):
+                de_faq.append(u)
+            elif "/en/" not in path_lower and "/fr/" not in path_lower:
+                other_faq.append(u)
+    faq_candidates = de_faq + other_faq
+
+    # Aus Links der Startseite (Fallback)
     for link in links:
         full_url = urljoin(base_url, link).rstrip("/")
-        if full_url in seen_urls:
+        path_lower = urlparse(full_url).path.lower()
+        if base_domain in full_url and any(p in path_lower for p in faq_patterns):
+            if full_url not in faq_candidates:
+                faq_candidates.append(full_url)
+
+    # FAQ crawlen
+    for faq_url in faq_candidates[:2]:
+        t, h, _ = fetch_page(faq_url)
+        if t:
+            pages_content["FAQ-Seite"] = {"text": t, "headings": h}
+            faq_crawled = True
+            break
+
+    # --- SCHRITT 4: Weitere relevante Unterseiten (aus Sitemap bevorzugt) ---
+    seen_urls = {base_url} | set(faq_candidates)
+    priority_urls = []
+
+    # Irrelevante Seiten ausschliessen
+    exclude_patterns = ["datenschutz", "cookie", "impressum", "agb", "privacy",
+                       "sitemap", "robots", ".xml", ".pdf", "login", "admin"]
+    url_pool = sitemap_urls if sitemap_urls else [urljoin(base_url, l) for l in links]
+
+    for u in url_pool:
+        u_clean = u.rstrip("/")
+        if u_clean in seen_urls:
             continue
-        parsed = urlparse(full_url)
-        if parsed.netloc not in (base_domain, ""):
+        parsed = urlparse(u_clean)
+        if base_domain not in parsed.netloc:
             continue
         path_lower = parsed.path.lower()
-        for pattern in priority_patterns:
+        if any(ex in path_lower for ex in exclude_patterns):
+            continue
+        for pattern in content_patterns:
             if pattern in path_lower:
-                score = 10 if any(k in path_lower for k in ["faq", "fragen", "haeufig"]) else                         8 if any(k in path_lower for k in ["service", "kontakt", "ueber"]) else                         6 if any(k in path_lower for k in ["zimmer", "appartement"]) else 4
-                priority_urls.append((score, full_url, path_lower))
-                seen_urls.add(full_url)
+                priority_urls.append((4, u_clean, path_lower))
+                seen_urls.add(u_clean)
                 break
 
     priority_urls.sort(reverse=True)
 
-    # Top 6 Unterseiten crawlen
-    for _, sub_url, sub_path in priority_urls[:6]:
+    for _, sub_url, sub_path in priority_urls[:5]:
         page_name = sub_path.strip("/").split("/")[-1][:40]
-        text, headings, _ = fetch_page(sub_url)
-        if text:
-            pages_content[page_name] = {"text": text, "headings": headings}
+        t, h, _ = fetch_page(sub_url)
+        if t:
+            pages_content[page_name] = {"text": t, "headings": h}
 
     return pages_content
 
@@ -278,12 +355,19 @@ def format_crawl_for_prompt(pages_content):
     for page_name, data in pages_content.items():
         output.append(f"\n=== SEITE: {page_name.upper()} ===")
         if data.get("headings"):
-            output.append("UEBERSCHRIFTEN: " + " | ".join(data["headings"][:8]))
+            headings = data["headings"]
+            faq_fragen = [h for h in headings if h.startswith("[SPAN]") and "?" in h]
+            normale_headings = [h for h in headings if not h.startswith("[SPAN]")]
+            if normale_headings:
+                output.append("UEBERSCHRIFTEN: " + " | ".join(normale_headings[:10]))
+            if faq_fragen:
+                output.append(f"FAQ-SEKTION VORHANDEN ({len(faq_fragen)} Fragen gefunden):")
+                for fq in faq_fragen:
+                    output.append("  " + fq.replace("[SPAN] ", "- "))
         output.append("TEXT: " + data["text"][:2500])
     return "\n".join(output)
 
 
-# ─── ANALYSE FUNCTION ───
 def run_analysis(hotel_name, location, url, business_type):
     api_key = get_api_key()
     if not api_key:
@@ -427,6 +511,7 @@ Bewerte diese 5 Faktoren (0-10) basierend auf den gecrawlten Inhalten:
 
 USP-Regel: Appartement mit Sauna/Panorama = echter USP. Hotel 3-4 Sterne mit Sauna = Standard.
 WICHTIG: Sei fair - wenn FAQ auf Unterseite vorhanden, ist das ein gutes Zeichen (6-8 Punkte).
+ACHTUNG JS-Websites: Wenn du "ZUSATZ-FAQ-INHALTE:" oder "FAQ:" Eintraege im Text siehst, sind das extrahierte Accordion-Fragen von Next.js/React-Seiten. Diese ZAEHLEN als vollwertige FAQ-Sektion (7-9 Punkte)!
 
 Antworte NUR als JSON:
 {{
