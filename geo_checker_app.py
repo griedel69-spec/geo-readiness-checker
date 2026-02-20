@@ -390,23 +390,123 @@ Antworte NUR als valides JSON ohne Markdown:
 }}"""
 
     client = anthropic.Anthropic(api_key=api_key)
-    message = client.messages.create(
-        model="claude-opus-4-5",
-        max_tokens=4000,
-        messages=[{"role": "user", "content": prompt}]
-    )
-    text = message.content[0].text.strip()
-    # Robuste JSON-Extraktion — entfernt Markdown-Backticks falls vorhanden
-    if "```" in text:
-        text = text.split("```")[1]
-        if text.startswith("json"):
-            text = text[4:]
-    # Finde erstes { und letztes } 
-    start = text.find("{")
-    end = text.rfind("}") + 1
-    if start >= 0 and end > start:
-        text = text[start:end]
-    return json.loads(text)
+
+    def safe_json_parse(raw):
+        """Robuste JSON-Extraktion aus Claude-Antwort."""
+        text = raw.strip()
+        if "```" in text:
+            parts = text.split("```")
+            for part in parts:
+                part = part.strip()
+                if part.startswith("json"):
+                    part = part[4:].strip()
+                if part.startswith("{"):
+                    text = part
+                    break
+        start = text.find("{")
+        end = text.rfind("}") + 1
+        if start >= 0 and end > start:
+            text = text[start:end]
+        return json.loads(text)
+
+    # ── CALL 1: Analyse-Report (kompakt, schnell) ──
+    analyse_prompt = f"""Du bist GEO-Optimierungs-Experte fuer Tourismus-Websites im DACH-Raum.
+
+Betrieb: {hotel_name} | Ort: {location} | Typ: {business_type}
+{crawl_info}
+
+GECRAWLTE INHALTE:
+{website_content[:8000]}
+
+Bewerte diese 5 Faktoren (0-10) basierend auf den gecrawlten Inhalten:
+1. FAQ-Sektion: Strukturierte Fragen & Antworten vorhanden?
+2. H1-Optimierung: Ortsbezug und USP in Hauptueberschriften?
+3. Lokale Keywords: Region, Bundesland, Aktivitaeten, Saison?
+4. NAP-Konsistenz: Name, Adresse, Telefon vollstaendig & einheitlich?
+5. USP-Klarheit: Klare Alleinstellungsmerkmale kommuniziert?
+
+USP-Regel: Appartement mit Sauna/Panorama = echter USP. Hotel 3-4 Sterne mit Sauna = Standard.
+WICHTIG: Sei fair - wenn FAQ auf Unterseite vorhanden, ist das ein gutes Zeichen (6-8 Punkte).
+
+Antworte NUR als JSON:
+{{
+  "gesamtscore": <0-50>,
+  "faktoren": [
+    {{"name": "FAQ-Sektion", "score": <0-10>, "kommentar": "<1 praegnanter Satz>"}},
+    {{"name": "H1-Optimierung", "score": <0-10>, "kommentar": "<1 praegnanter Satz>"}},
+    {{"name": "Lokale Keywords", "score": <0-10>, "kommentar": "<1 praegnanter Satz>"}},
+    {{"name": "NAP-Konsistenz", "score": <0-10>, "kommentar": "<1 praegnanter Satz>"}},
+    {{"name": "USP-Klarheit", "score": <0-10>, "kommentar": "<1 praegnanter Satz>"}}
+  ],
+  "quickwins": [
+    {{"prioritaet": "sofort", "massnahme": "<konkrete Massnahme>", "impact": "<messbarer Effekt>"}},
+    {{"prioritaet": "sofort", "massnahme": "<konkrete Massnahme>", "impact": "<messbarer Effekt>"}},
+    {{"prioritaet": "kurz", "massnahme": "<konkrete Massnahme>", "impact": "<messbarer Effekt>"}},
+    {{"prioritaet": "kurz", "massnahme": "<konkrete Massnahme>", "impact": "<messbarer Effekt>"}},
+    {{"prioritaet": "mittel", "massnahme": "<konkrete Massnahme>", "impact": "<messbarer Effekt>"}}
+  ],
+  "zusammenfassung": "<2-3 Saetze ehrliche Gesamtbewertung>"
+}}"""
+
+    with st.spinner("📊 Analysiere Website-Inhalte..."):
+        msg1 = client.messages.create(
+            model="claude-opus-4-5",
+            max_tokens=1500,
+            messages=[{"role": "user", "content": analyse_prompt}]
+        )
+    result = safe_json_parse(msg1.content[0].text)
+
+    # ── CALL 2: Optimierungspaket (separat, mit eigenem Token-Budget) ──
+    paket_prompt = f"""Du erstellst das GEO-Optimierungspaket Professional fuer diesen Betrieb.
+
+Betrieb: {hotel_name} | Ort: {location} | Typ: {business_type}
+
+WEBSITE-INHALTE (gecrawlt):
+{website_content[:6000]}
+
+Erstelle auf Basis der tatsaechlichen Website-Inhalte:
+- FAQ: 10 Fragen+Antworten, KI-optimiert, zum Betrieb passend
+- H1_NEU: Optimierter Seitentitel (max 70 Zeichen, mit Ort+USP)
+- H1_SUB: Subheadline (max 120 Zeichen)
+- USP_BOX: 4 echte Alleinstellungsmerkmale (Emoji + Titel + 1 Satz)
+- KEYWORDS: 20 lokale Keywords fuer die Region
+- GOOGLE_BUSINESS: Google Business Text (max 750 Zeichen, keyword-reich)
+- META_START: Meta-Description Startseite (max 155 Zeichen)
+- META_ZIMMER: Meta-Description Zimmer/Appartements (max 155 Zeichen)
+- META_PREISE: Meta-Description Preise/Angebote (max 155 Zeichen)
+- UEBER_UNS: "Ueber uns" Text (250-300 Woerter, KI-lesbar, mit Lage+Geschichte+USPs)
+
+WICHTIG: Nur Fakten aus gecrawlten Inhalten verwenden. Keine Erfindungen.
+
+Antworte NUR als JSON:
+{{
+  "faq": [{{"frage": "<Frage>", "antwort": "<Antwort>"}}],
+  "h1_neu": "<H1-Titel>",
+  "h1_sub": "<Subheadline>",
+  "usp_box": [{{"emoji": "<>", "titel": "<>", "text": "<1 Satz>"}}],
+  "keywords": ["<kw1>", "<kw2>"],
+  "google_business": "<Text>",
+  "meta_start": "<Meta>",
+  "meta_zimmer": "<Meta>",
+  "meta_preise": "<Meta>",
+  "ueber_uns": "<Text>"
+}}"""
+
+    with st.spinner("📦 Erstelle Optimierungspaket..."):
+        msg2 = client.messages.create(
+            model="claude-opus-4-5",
+            max_tokens=3000,
+            messages=[{"role": "user", "content": paket_prompt}]
+        )
+    paket = safe_json_parse(msg2.content[0].text)
+    result["paket"] = paket
+    result["hotelName"] = hotel_name
+    result["location"] = location
+    result["url"] = url
+    result["type"] = business_type
+    result["email"] = ""
+    result["date"] = __import__("datetime").date.today().strftime("%d.%m.%Y")
+    return result
 
 # ─── PDF GENERATOR ───
 def sanitize(text):
