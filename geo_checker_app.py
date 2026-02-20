@@ -175,12 +175,31 @@ Analysiere folgende Website für KI-Suchmaschinen-Sichtbarkeit:
 - Website: {url}
 - Typ: {business_type}
 
+WICHTIGE ANALYSE-REGELN:
+- Berücksichtige FAQ-Inhalte auf ALLEN Seiten, nicht nur der Startseite
+- Bei H1/Headlines: Bewerte auch H2/H3 Überschriften positiv wenn Region/Ort dort vorkommt
+- Lokale Keywords: Prüfe Unterseiten (Aktivitäten, Umgebung, Sommer/Winter) — nicht nur Startseite
+- NAP = Name, Adresse, Phone (Telefon) — erkläre diesen Begriff im Kommentar immer kurz
+- USP-Bewertung: Unterscheide DREI Kategorien von Alleinstellungsmerkmalen:
+
+  1. LAGE-USP (naturgegebene Einzigartigkeit — unabhängig von Kategorie bewertbar):
+     Direkt am See, einzigartiger Ausblick, besondere Ruhelage, historisches Gebäude — das ist ein echter USP WENN es wirklich einzigartig ist und klar kommuniziert wird. Gilt für alle Kategorien gleich.
+
+  2. INFRASTRUKTUR-ASSETS (kategorieabhängig bewerten):
+     * Appartement/Ferienwohnung: Sauna, Pool, Skidirektlage, Seeblick = USP (nicht selbstverständlich)
+     * 3-4 Sterne Hotel: Sauna, gute Lage = Marktstandard, KEIN USP
+     * 4-5 Sterne Hotel: Sauna, Pool, Wellness, Skidirektlage = vom Markt vorausgesetzt, KEIN USP
+
+  3. THEMATISCHE/LEISTUNGS-USPs (stärkste Kategorie — unabhängig von Betriebstyp):
+     Ganztägige Kinderbetreuung, täglich geführte Wanderungen, tägliches Sportprogramm, kulinarische Spezialisierung, besondere Familiengeschichte, zertifizierte Nachhaltigkeitsprogramme — das sind echte Alleinstellungsmerkmale die kommuniziert und bewertet werden sollen
+- Sei fair und präzise — gib keinen schlechten Score wenn Inhalte vorhanden aber nicht auf der Startseite sind
+
 Bewerte EXAKT diese 5 Faktoren auf einer Skala von 0–10:
-1. FAQ-Sektion (Strukturierte Fragen & Antworten für KI-Suche)
-2. H1/Headline-Optimierung (Ortsbezug, Haupt-USP, Keywords)
-3. Lokale Keywords (Region, Bundesland, Aktivitäten, Saison)
-4. NAP-Konsistenz (Name, Adresse, Telefon - Vollständigkeit & Konsistenz)
-5. USP-Klarheit (Was macht diesen Betrieb einzigartig?)
+1. FAQ-Sektion (Strukturierte Fragen & Antworten auf der gesamten Website)
+2. H1/Headline-Optimierung (Ortsbezug in H1 ODER H2, Haupt-USP, Keywords)
+3. Lokale Keywords (Region, Bundesland, Aktivitäten, Saison — gesamte Website)
+4. NAP-Konsistenz (Name, Adresse, Telefon — Vollständigkeit & einheitliche Darstellung)
+5. USP-Klarheit (Alleinstellungsmerkmale — auch Ausstattung, Lage, Besonderheiten zählen)
 
 Erstelle zusätzlich das komplette GEO-Optimierungspaket Professional:
 
