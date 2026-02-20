@@ -160,6 +160,129 @@ def get_api_key():
     except:
         return None
 
+# ─── MULTI-PAGE CRAWLER ───
+def crawl_website(base_url):
+    """Crawlt die wichtigsten Seiten einer Hotel-Website."""
+    import requests
+    from html.parser import HTMLParser
+    from urllib.parse import urljoin, urlparse
+
+    class TextExtractor(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.text_parts = []
+            self.links = []
+            self.skip_tags = {"script", "style", "head", "noscript", "iframe"}
+            self.current_skip = 0
+            self.headings = []
+            self.in_heading = False
+            self.current_tag = ""
+        def handle_starttag(self, tag, attrs):
+            if tag in self.skip_tags:
+                self.current_skip += 1
+            self.current_tag = tag
+            if tag in ("h1", "h2", "h3"):
+                self.in_heading = True
+            if tag == "a":
+                for attr, val in attrs:
+                    if attr == "href" and val:
+                        self.links.append(val)
+        def handle_endtag(self, tag):
+            if tag in self.skip_tags:
+                self.current_skip = max(0, self.current_skip - 1)
+            if tag in ("h1", "h2", "h3"):
+                self.in_heading = False
+        def handle_data(self, data):
+            if self.current_skip == 0:
+                text = data.strip()
+                if text and len(text) > 2:
+                    if self.in_heading:
+                        self.headings.append(f"[{self.current_tag.upper()}] {text}")
+                    self.text_parts.append(text)
+        def get_text(self):
+            return " ".join(self.text_parts)
+
+    if not base_url.startswith("http"):
+        base_url = "https://" + base_url
+    base_url = base_url.rstrip("/")
+    parsed_base = urlparse(base_url)
+    base_domain = parsed_base.netloc
+
+    headers = {
+        "User-Agent": "Mozilla/5.0 (compatible; GEO-Checker/1.0)",
+        "Accept": "text/html,application/xhtml+xml",
+        "Accept-Language": "de-AT,de;q=0.9"
+    }
+
+    priority_patterns = [
+        "faq", "fragen", "haeufig", "service", "kontakt", "contact",
+        "zimmer", "rooms", "appartement", "wohnung", "suite",
+        "ueber", "about", "uns", "lage", "location", "anreise",
+        "wellness", "spa", "angebot", "preise", "prices",
+        "aktivitaet", "activities", "sommer", "winter", "region"
+    ]
+
+    pages_content = {}
+
+    def fetch_page(url):
+        try:
+            resp = requests.get(url, headers=headers, timeout=8, allow_redirects=True)
+            if resp.status_code == 200 and "text/html" in resp.headers.get("content-type", ""):
+                parser = TextExtractor()
+                parser.feed(resp.text)
+                return parser.get_text()[:3000], parser.headings[:15], parser.links
+        except Exception:
+            pass
+        return None, [], []
+
+    # Startseite
+    text, headings, links = fetch_page(base_url)
+    if text:
+        pages_content["Startseite"] = {"text": text, "headings": headings}
+
+    # Unterseiten filtern
+    seen_urls = {base_url}
+    priority_urls = []
+    for link in links:
+        full_url = urljoin(base_url, link).rstrip("/")
+        if full_url in seen_urls:
+            continue
+        parsed = urlparse(full_url)
+        if parsed.netloc not in (base_domain, ""):
+            continue
+        path_lower = parsed.path.lower()
+        for pattern in priority_patterns:
+            if pattern in path_lower:
+                score = 10 if any(k in path_lower for k in ["faq", "fragen", "haeufig"]) else                         8 if any(k in path_lower for k in ["service", "kontakt", "ueber"]) else                         6 if any(k in path_lower for k in ["zimmer", "appartement"]) else 4
+                priority_urls.append((score, full_url, path_lower))
+                seen_urls.add(full_url)
+                break
+
+    priority_urls.sort(reverse=True)
+
+    # Top 6 Unterseiten crawlen
+    for _, sub_url, sub_path in priority_urls[:6]:
+        page_name = sub_path.strip("/").split("/")[-1][:40]
+        text, headings, _ = fetch_page(sub_url)
+        if text:
+            pages_content[page_name] = {"text": text, "headings": headings}
+
+    return pages_content
+
+
+def format_crawl_for_prompt(pages_content):
+    """Formatiert gecrawlte Seiten fuer den Claude-Prompt."""
+    if not pages_content:
+        return "Keine Website-Inhalte konnten geladen werden."
+    output = []
+    for page_name, data in pages_content.items():
+        output.append(f"\n=== SEITE: {page_name.upper()} ===")
+        if data.get("headings"):
+            output.append("UEBERSCHRIFTEN: " + " | ".join(data["headings"][:8]))
+        output.append("TEXT: " + data["text"][:2500])
+    return "\n".join(output)
+
+
 # ─── ANALYSE FUNCTION ───
 def run_analysis(hotel_name, location, url, business_type):
     api_key = get_api_key()
@@ -167,13 +290,29 @@ def run_analysis(hotel_name, location, url, business_type):
         st.error("❌ API-Key nicht konfiguriert. Bitte in Streamlit Secrets eintragen (ANTHROPIC_API_KEY).")
         return None
 
-    prompt = f"""Du bist ein Experte für GEO-Optimierung (Generative Engine Optimization) für Tourismus-Websites im DACH-Raum.
+    # Echtes Multi-Page Crawling
+    with st.spinner("\U0001f50d Website wird gecrawlt... (Startseite + relevante Unterseiten)"):
+        pages_content = crawl_website(url)
+        website_content = format_crawl_for_prompt(pages_content)
+        pages_found = list(pages_content.keys())
 
-Analysiere folgende Website für KI-Suchmaschinen-Sichtbarkeit:
-- Betrieb: {hotel_name}
-- Ort: {location}
-- Website: {url}
-- Typ: {business_type}
+    crawl_info = f"Gecrawlte Seiten ({len(pages_found)}): {', '.join(pages_found)}"
+
+    prompt = f"""Du bist ein Experte fuer GEO-Optimierung (Generative Engine Optimization) fuer Tourismus-Websites im DACH-Raum.
+
+Analysiere folgende Website fuer KI-Suchmaschinen-Sichtbarkeit.
+WICHTIG: Die folgenden Inhalte wurden DIREKT von der Website gecrawlt.
+Analysiere NUR diese tatsaechlichen Inhalte - keine Vermutungen, keine Ergaenzungen aus deinem Wissen.
+
+Betrieb: {hotel_name}
+Ort: {location}
+Website: {url}
+Typ: {business_type}
+{crawl_info}
+
+=== GECRAWLTE WEBSITE-INHALTE ===
+{website_content}
+=== ENDE GECRAWLTE INHALTE ===
 
 WICHTIGE ANALYSE-REGELN:
 - Berücksichtige FAQ-Inhalte auf ALLEN Seiten, nicht nur der Startseite
@@ -436,7 +575,7 @@ if submitted:
     if not hotel_name or not website_url or not contact_email:
         st.error("Bitte Betriebsname, Website-URL und E-Mail angeben.")
     else:
-        with st.spinner("KI analysiert Ihre Website... Das dauert ca. 30–60 Sekunden."):
+        with st.spinner("🤖 KI wertet gecrawlte Inhalte aus... Das dauert ca. 30–60 Sekunden."):
             progress = st.progress(0)
             import time
             for i in range(0, 60, 10):
