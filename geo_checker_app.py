@@ -216,7 +216,6 @@ def crawl_website(base_url):
     }
 
     faq_patterns = ["faq", "haeufig", "faq.html", "faq.php"]
-    # WICHTIG: "fragen" NICHT in faq_patterns - "unverbindlich-anfragen" wuerde sonst faelschlich matchen!
     content_patterns = [
         "zimmer", "rooms", "appartement", "wohnung", "suite",
         "ueber", "about", "uns", "lage", "anreise",
@@ -236,7 +235,6 @@ def crawl_website(base_url):
                 parser.feed(html)
                 text = parser.get_text()
 
-                # Accordion/JS-FAQ Extraktion (Next.js, React, etc.)
                 faq_spans = re.findall(r'<span>([^<]{15,200}\?)</span>', html)
                 if faq_spans:
                     text = text + "\n\nFAQ-FRAGEN AUF DIESER SEITE:\n" + "\n".join(f"- {q}" for q in faq_spans[:30])
@@ -247,7 +245,6 @@ def crawl_website(base_url):
         return None, [], []
 
     def get_urls_from_sitemap(base):
-        """Liest Sitemap und gibt alle URLs der Domain zurueck."""
         found_urls = []
         sitemap_candidates = [
             base + "/sitemap.xml",
@@ -268,22 +265,15 @@ def crawl_website(base_url):
                 pass
         return found_urls
 
-    # --- SCHRITT 1: Startseite ---
     text, headings, links = fetch_page(base_url)
     if text:
         pages_content["Startseite"] = {"text": text, "headings": headings}
 
-    # --- SCHRITT 2: Sitemap lesen (zuverlaessigste Methode) ---
     sitemap_urls = get_urls_from_sitemap(base_url)
 
-    # --- SCHRITT 3: FAQ-Seiten IMMER zuerst und garantiert crawlen ---
     faq_crawled = False
     faq_candidates = []
 
-    # Sprache: Deutsch bevorzugen (DACH-Markt), dann Eingabe-URL, dann alles andere
-    input_path = urlparse(base_url).path.lower()
-
-    # Aus Sitemap - Deutsche Version immer bevorzugt
     de_faq = []
     other_faq = []
     for u in sitemap_urls:
@@ -295,7 +285,6 @@ def crawl_website(base_url):
                 other_faq.append(u)
     faq_candidates = de_faq + other_faq
 
-    # Aus Links der Startseite (Fallback)
     for link in links:
         full_url = urljoin(base_url, link).rstrip("/")
         path_lower = urlparse(full_url).path.lower()
@@ -303,7 +292,6 @@ def crawl_website(base_url):
             if full_url not in faq_candidates:
                 faq_candidates.append(full_url)
 
-    # FAQ crawlen
     for faq_url in faq_candidates[:2]:
         t, h, _ = fetch_page(faq_url)
         if t:
@@ -311,11 +299,9 @@ def crawl_website(base_url):
             faq_crawled = True
             break
 
-    # --- SCHRITT 4: Weitere relevante Unterseiten (aus Sitemap bevorzugt) ---
     seen_urls = {base_url} | set(faq_candidates)
     priority_urls = []
 
-    # Irrelevante Seiten ausschliessen
     exclude_patterns = ["datenschutz", "cookie", "impressum", "agb", "privacy",
                        "sitemap", "robots", ".xml", ".pdf", "login", "admin"]
     url_pool = sitemap_urls if sitemap_urls else [urljoin(base_url, l) for l in links]
@@ -348,7 +334,6 @@ def crawl_website(base_url):
 
 
 def format_crawl_for_prompt(pages_content):
-    """Formatiert gecrawlte Seiten fuer den Claude-Prompt."""
     if not pages_content:
         return "Keine Website-Inhalte konnten geladen werden."
     output = []
@@ -368,13 +353,54 @@ def format_crawl_for_prompt(pages_content):
     return "\n".join(output)
 
 
+# ─── ROBUSTE JSON-PARSE FUNKTION ───
+def safe_json_parse(raw):
+    """
+    Robuste JSON-Extraktion aus Claude-Antworten.
+    Behandelt: reines JSON, ```json Blöcke, ``` Blöcke, JSON mit führendem Text.
+    """
+    if not raw or not raw.strip():
+        raise ValueError("Leere Antwort von Claude API")
+
+    text = raw.strip()
+
+    # Fall 1: Markdown-Codeblock mit ```json oder ```
+    if "```" in text:
+        parts = text.split("```")
+        for part in parts:
+            part = part.strip()
+            # json-Label entfernen falls vorhanden
+            if part.lower().startswith("json"):
+                part = part[4:].strip()
+            if part.startswith("{"):
+                text = part
+                break
+
+    # Fall 2: JSON-Objekt direkt extrahieren (erstes { bis letztes })
+    start = text.find("{")
+    end = text.rfind("}") + 1
+    if start >= 0 and end > start:
+        text = text[start:end]
+    else:
+        raise ValueError(f"Kein JSON-Objekt gefunden. Antwort beginnt mit: {raw[:300]}")
+
+    # Fall 3: Trailing Commas bereinigen (häufiger Claude-Fehler)
+    import re
+    text = re.sub(r',\s*}', '}', text)
+    text = re.sub(r',\s*]', ']', text)
+
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"JSON-Parse-Fehler: {e}\nText (erste 500 Zeichen): {text[:500]}")
+
+
 def run_analysis(hotel_name, location, url, business_type):
     api_key = get_api_key()
     if not api_key:
         st.error("❌ API-Key nicht konfiguriert. Bitte in Streamlit Secrets eintragen (ANTHROPIC_API_KEY).")
         return None
 
-    # Echtes Multi-Page Crawling
     with st.spinner("\U0001f50d Website wird gecrawlt... (Startseite + relevante Unterseiten)"):
         pages_content = crawl_website(url)
         website_content = format_crawl_for_prompt(pages_content)
@@ -382,118 +408,9 @@ def run_analysis(hotel_name, location, url, business_type):
 
     crawl_info = f"Gecrawlte Seiten ({len(pages_found)}): {', '.join(pages_found)}"
 
-    prompt = f"""Du bist ein Experte fuer GEO-Optimierung (Generative Engine Optimization) fuer Tourismus-Websites im DACH-Raum.
-
-Analysiere folgende Website fuer KI-Suchmaschinen-Sichtbarkeit.
-WICHTIG: Die folgenden Inhalte wurden DIREKT von der Website gecrawlt.
-Analysiere NUR diese tatsaechlichen Inhalte - keine Vermutungen, keine Ergaenzungen aus deinem Wissen.
-
-Betrieb: {hotel_name}
-Ort: {location}
-Website: {url}
-Typ: {business_type}
-{crawl_info}
-
-=== GECRAWLTE WEBSITE-INHALTE ===
-{website_content}
-=== ENDE GECRAWLTE INHALTE ===
-
-WICHTIGE ANALYSE-REGELN:
-- Berücksichtige FAQ-Inhalte auf ALLEN Seiten, nicht nur der Startseite
-- Bei H1/Headlines: Bewerte auch H2/H3 Überschriften positiv wenn Region/Ort dort vorkommt
-- Lokale Keywords: Prüfe Unterseiten (Aktivitäten, Umgebung, Sommer/Winter) — nicht nur Startseite
-- NAP = Name, Adresse, Phone (Telefon) — erkläre diesen Begriff im Kommentar immer kurz
-- USP-Bewertung: Unterscheide DREI Kategorien von Alleinstellungsmerkmalen:
-
-  1. LAGE-USP (naturgegebene Einzigartigkeit — unabhängig von Kategorie bewertbar):
-     Direkt am See, einzigartiger Ausblick, besondere Ruhelage, historisches Gebäude — das ist ein echter USP WENN es wirklich einzigartig ist und klar kommuniziert wird. Gilt für alle Kategorien gleich.
-
-  2. INFRASTRUKTUR-ASSETS (kategorieabhängig bewerten):
-     * Appartement/Ferienwohnung: Sauna, Pool, Skidirektlage, Seeblick = USP (nicht selbstverständlich)
-     * 3-4 Sterne Hotel: Sauna, gute Lage = Marktstandard, KEIN USP
-     * 4-5 Sterne Hotel: Sauna, Pool, Wellness, Skidirektlage = vom Markt vorausgesetzt, KEIN USP
-
-  3. THEMATISCHE/LEISTUNGS-USPs (stärkste Kategorie — unabhängig von Betriebstyp):
-     Ganztägige Kinderbetreuung, täglich geführte Wanderungen, tägliches Sportprogramm, kulinarische Spezialisierung, besondere Familiengeschichte, zertifizierte Nachhaltigkeitsprogramme — das sind echte Alleinstellungsmerkmale die kommuniziert und bewertet werden sollen
-- Sei fair und präzise — gib keinen schlechten Score wenn Inhalte vorhanden aber nicht auf der Startseite sind
-
-Bewerte EXAKT diese 5 Faktoren auf einer Skala von 0–10:
-1. FAQ-Sektion (Strukturierte Fragen & Antworten auf der gesamten Website)
-2. H1/Headline-Optimierung (Ortsbezug in H1 ODER H2, Haupt-USP, Keywords)
-3. Lokale Keywords (Region, Bundesland, Aktivitäten, Saison — gesamte Website)
-4. NAP-Konsistenz (Name, Adresse, Telefon — Vollständigkeit & einheitliche Darstellung)
-5. USP-Klarheit (Alleinstellungsmerkmale — auch Ausstattung, Lage, Besonderheiten zählen)
-
-Erstelle zusätzlich das komplette GEO-Optimierungspaket Professional:
-
-FAQ: 10 konkrete Fragen+Antworten speziell fuer diesen Betrieb, KI-optimiert, auf Deutsch
-H1_NEU: Optimierter H1-Titel fuer die Startseite (max 70 Zeichen, mit Ort und USP)
-H1_SUB: Optimierte Subheadline (max 120 Zeichen)
-USP_BOX: 4 Alleinstellungsmerkmale mit Emoji, Titel und 1 Satz Beschreibung
-KEYWORDS: 20 lokale Keywords fuer die Region
-GOOGLE_BUSINESS: Fertiger Beschreibungstext fuer Google Business Profil (max 750 Zeichen, keyword-reich)
-META_START: Meta-Description fuer Startseite (max 155 Zeichen)
-META_ZIMMER: Meta-Description fuer Zimmer-Seite (max 155 Zeichen)
-META_PREISE: Meta-Description fuer Preise/Angebote-Seite (max 155 Zeichen)
-UEBER_UNS: Vollstaendiger "Ueber uns" Text neu geschrieben (250-300 Woerter, KI-lesbar, mit Geschichte, Lage, USPs)
-
-Antworte NUR als valides JSON ohne Markdown:
-{{
-  "gesamtscore": <Zahl 0-50>,
-  "faktoren": [
-    {{"name": "FAQ-Sektion", "score": <0-10>, "kommentar": "<1 Satz>"}},
-    {{"name": "H1-Optimierung", "score": <0-10>, "kommentar": "<1 Satz>"}},
-    {{"name": "Lokale Keywords", "score": <0-10>, "kommentar": "<1 Satz>"}},
-    {{"name": "NAP-Konsistenz", "score": <0-10>, "kommentar": "<1 Satz>"}},
-    {{"name": "USP-Klarheit", "score": <0-10>, "kommentar": "<1 Satz>"}}
-  ],
-  "quickwins": [
-    {{"prioritaet": "sofort", "massnahme": "<Maßnahme>", "impact": "<Effekt>"}},
-    {{"prioritaet": "sofort", "massnahme": "<Maßnahme>", "impact": "<Effekt>"}},
-    {{"prioritaet": "kurz", "massnahme": "<Maßnahme>", "impact": "<Effekt>"}},
-    {{"prioritaet": "kurz", "massnahme": "<Maßnahme>", "impact": "<Effekt>"}},
-    {{"prioritaet": "mittel", "massnahme": "<Maßnahme>", "impact": "<Effekt>"}}
-  ],
-  "zusammenfassung": "<2-3 Saetze Gesamtbewertung>",
-  "paket": {{
-    "faq": [
-      {{"frage": "<Frage>", "antwort": "<Antwort>"}}
-    ],
-    "h1_neu": "<Optimierter H1-Titel>",
-    "h1_sub": "<Optimierte Subheadline>",
-    "usp_box": [
-      {{"emoji": "<Emoji>", "titel": "<Titel>", "text": "<1 Satz>"}}
-    ],
-    "keywords": ["<keyword1>", "<keyword2>"],
-    "google_business": "<Fertiger Google Business Text>",
-    "meta_start": "<Meta-Description Startseite>",
-    "meta_zimmer": "<Meta-Description Zimmer>",
-    "meta_preise": "<Meta-Description Preise>",
-    "ueber_uns": "<Vollstaendiger Ueber uns Text>"
-  }}
-}}"""
-
     client = anthropic.Anthropic(api_key=api_key)
 
-    def safe_json_parse(raw):
-        """Robuste JSON-Extraktion aus Claude-Antwort."""
-        text = raw.strip()
-        if "```" in text:
-            parts = text.split("```")
-            for part in parts:
-                part = part.strip()
-                if part.startswith("json"):
-                    part = part[4:].strip()
-                if part.startswith("{"):
-                    text = part
-                    break
-        start = text.find("{")
-        end = text.rfind("}") + 1
-        if start >= 0 and end > start:
-            text = text[start:end]
-        return json.loads(text)
-
-    # ── CALL 1: Analyse-Report (kompakt, schnell) ──
+    # ── CALL 1: Analyse-Report ──
     analyse_prompt = f"""Du bist GEO-Optimierungs-Experte fuer Tourismus-Websites im DACH-Raum.
 
 Betrieb: {hotel_name} | Ort: {location} | Typ: {business_type}
@@ -513,7 +430,9 @@ USP-Regel: Appartement mit Sauna/Panorama = echter USP. Hotel 3-4 Sterne mit Sau
 WICHTIG: Sei fair - wenn FAQ auf Unterseite vorhanden, ist das ein gutes Zeichen (6-8 Punkte).
 ACHTUNG JS-Websites: Wenn du "ZUSATZ-FAQ-INHALTE:" oder "FAQ:" Eintraege im Text siehst, sind das extrahierte Accordion-Fragen von Next.js/React-Seiten. Diese ZAEHLEN als vollwertige FAQ-Sektion (7-9 Punkte)!
 
-Antworte NUR als JSON:
+Antworte AUSSCHLIESSLICH als reines JSON-Objekt. Kein Markdown, keine Erklaerungen, keine Codeblocks.
+Beginne deine Antwort direkt mit {{ und beende sie mit }}
+
 {{
   "gesamtscore": <0-50>,
   "faktoren": [
@@ -539,9 +458,14 @@ Antworte NUR als JSON:
             max_tokens=1500,
             messages=[{"role": "user", "content": analyse_prompt}]
         )
-    result = safe_json_parse(msg1.content[0].text)
 
-    # ── CALL 2: Optimierungspaket (separat, mit eigenem Token-Budget) ──
+    try:
+        result = safe_json_parse(msg1.content[0].text)
+    except ValueError as e:
+        st.error(f"❌ Fehler bei Analyse-Auswertung: {e}")
+        return None
+
+    # ── CALL 2: Optimierungspaket ──
     paket_prompt = f"""Du erstellst das GEO-Optimierungspaket Professional fuer diesen Betrieb.
 
 Betrieb: {hotel_name} | Ort: {location} | Typ: {business_type}
@@ -563,7 +487,9 @@ Erstelle auf Basis der tatsaechlichen Website-Inhalte:
 
 WICHTIG: Nur Fakten aus gecrawlten Inhalten verwenden. Keine Erfindungen.
 
-Antworte NUR als JSON:
+Antworte AUSSCHLIESSLICH als reines JSON-Objekt. Kein Markdown, keine Erklaerungen, keine Codeblocks.
+Beginne deine Antwort direkt mit {{ und beende sie mit }}
+
 {{
   "faq": [{{"frage": "<Frage>", "antwort": "<Antwort>"}}],
   "h1_neu": "<H1-Titel>",
@@ -583,7 +509,13 @@ Antworte NUR als JSON:
             max_tokens=3000,
             messages=[{"role": "user", "content": paket_prompt}]
         )
-    paket = safe_json_parse(msg2.content[0].text)
+
+    try:
+        paket = safe_json_parse(msg2.content[0].text)
+    except ValueError as e:
+        st.error(f"❌ Fehler bei Paket-Erstellung: {e}")
+        return None
+
     result["paket"] = paket
     result["hotelName"] = hotel_name
     result["location"] = location
@@ -614,7 +546,6 @@ def generate_pdf(r):
     pdf.add_page()
     pdf.set_auto_page_break(auto=True, margin=15)
 
-    # Header
     pdf.set_fill_color(26, 35, 50)
     pdf.rect(0, 0, 210, 45, 'F')
     pdf.set_font("Helvetica", "B", 20)
@@ -630,7 +561,6 @@ def generate_pdf(r):
     pdf.set_x(15)
     pdf.cell(0, 6, sanitize(f"{r['location']} | {r['type']} | Erstellt am {r['date']}"), ln=True)
 
-    # Score
     score = r["gesamtscore"]
     pdf.set_fill_color(61, 122, 94)
     pdf.rect(158, 8, 38, 28, 'F')
@@ -644,7 +574,6 @@ def generate_pdf(r):
 
     pdf.ln(18)
 
-    # Zusammenfassung
     pdf.set_fill_color(240, 237, 232)
     pdf.set_text_color(80, 80, 80)
     pdf.set_font("Helvetica", "I", 10)
@@ -652,7 +581,6 @@ def generate_pdf(r):
     pdf.multi_cell(180, 6, sanitize(r.get("zusammenfassung", "")), fill=True)
     pdf.ln(8)
 
-    # Faktoren
     pdf.set_font("Helvetica", "B", 13)
     pdf.set_text_color(26, 35, 50)
     pdf.set_x(15)
@@ -675,7 +603,6 @@ def generate_pdf(r):
         pdf.set_text_color(r_c, g_c, b_c)
         pdf.cell(0, 6, f"{score_f}/10", ln=True)
 
-        # Bar
         pdf.set_fill_color(220, 220, 220)
         pdf.rect(15, pdf.get_y(), 80, 3, 'F')
         pdf.set_fill_color(r_c, g_c, b_c)
@@ -688,7 +615,6 @@ def generate_pdf(r):
         pdf.multi_cell(180, 5, sanitize(f["kommentar"]))
         pdf.ln(3)
 
-    # Quick Wins
     pdf.ln(4)
     pdf.set_font("Helvetica", "B", 13)
     pdf.set_text_color(26, 35, 50)
@@ -720,7 +646,6 @@ def generate_pdf(r):
         pdf.cell(0, 5, sanitize("-> " + w["impact"]), ln=True)
         pdf.ln(2)
 
-    # Footer CTA
     pdf.ln(6)
     pdf.set_fill_color(26, 35, 50)
     pdf.set_x(15)
@@ -782,7 +707,6 @@ if submitted:
             result["date"] = datetime.date.today().strftime("%d.%m.%Y")
             st.session_state.result = result
 
-            # Save lead
             st.session_state.leads.append({
                 "Betrieb": hotel_name,
                 "Ort": location,
@@ -803,7 +727,6 @@ if st.session_state.result:
     st.markdown(f"## 📊 Analyse: {r['hotelName']}")
     st.caption(f"{r['location']} · {r['type']} · {r['date']}")
 
-    # Score
     if score >= 40:
         score_class = "score-excellent"
         score_label = "Ausgezeichnet"
@@ -830,7 +753,6 @@ if st.session_state.result:
     with col_summary:
         st.info(r.get("zusammenfassung", ""))
 
-    # Factors
     st.markdown("### Faktor-Analyse")
     for f in r["faktoren"]:
         s = f["score"]
@@ -844,7 +766,6 @@ if st.session_state.result:
             st.markdown(f"<div style='font-size:28px;font-weight:800;color:{bar_color};text-align:center;padding-top:8px'>{s}<span style='font-size:14px;color:#aaa'>/10</span></div>", unsafe_allow_html=True)
         st.markdown("---")
 
-    # Quick Wins
     st.markdown("### ⚡ Quick Wins")
     for w in r["quickwins"]:
         css_class = f"win-{w['prioritaet']}"
@@ -856,7 +777,6 @@ if st.session_state.result:
         </div>
         """, unsafe_allow_html=True)
 
-    # PDF Download
     st.markdown("### 📄 Report herunterladen")
     pdf_bytes = generate_pdf(r)
     filename = f"GEO_Report_{r['hotelName'].replace(' ','_')}_{r['date'].replace('.','')}.pdf"
@@ -868,7 +788,6 @@ if st.session_state.result:
         use_container_width=True
     )
 
-    # ─── PAKET TEASER (kein Inhalt sichtbar) ───
     paket = r.get("paket", {})
     if paket:
         st.markdown("---")
@@ -928,7 +847,6 @@ if st.session_state.result:
         </div>
         """, unsafe_allow_html=True)
 
-    # CTA — Detailberatung
     st.markdown("""
     <div class="cta-box">
         <h3 style="color:#c9a84c;margin:0 0 8px 0">🚀 GEO-Optimierungspaket Professional — € 149</h3>
@@ -942,7 +860,6 @@ if st.session_state.result:
     </div>
     """, unsafe_allow_html=True)
 
-    # Beratungsanfrage Button
     if "anfrage_gesendet" not in st.session_state:
         st.session_state.anfrage_gesendet = False
 
@@ -980,7 +897,6 @@ if st.session_state.result:
         st.success("✅ Perfekt! Ihre Anfrage ist bei Gernot Riedel eingegangen. Sie erhalten innerhalb von 24 Stunden Ihre fertigen Optimierungstexte per E-Mail.")
         st.info("📧 Bei Fragen: kontakt@gernot-riedel.com | 📞 +43 676 7237811")
 
-    # ReviewRadar Upsell
     st.markdown("""
     <div style="background:#f5f0e8;border:1px solid #e8e3da;border-left:4px solid #c9a84c;
                 padding:20px 24px;border-radius:4px;margin-top:16px">
@@ -1006,7 +922,6 @@ with st.expander("📊 Gesammelte Leads anzeigen (Admin)", expanded=False):
         df = pd.DataFrame(st.session_state.leads)
         st.dataframe(df, use_container_width=True)
 
-        # CSV Export
         csv_buffer = io.StringIO()
         df.to_csv(csv_buffer, index=False, encoding="utf-8-sig")
         st.download_button(
