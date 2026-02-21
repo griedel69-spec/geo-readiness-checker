@@ -1,232 +1,945 @@
----
-name: geo-checker-tourism
-description: GEO-Readiness Checker and optimization package creation for tourism businesses in the DACH region (Austria, Germany, Switzerland). Use when creating a GEO optimization package for a hotel, analyzing a tourism website for AI visibility, or developing the Streamlit app code.
----
+import streamlit as st
+import anthropic
+import json
+import csv
+import io
+import datetime
+from fpdf import FPDF
 
-# GEO-Checker Tourism — Skill für Gernot Riedel Tourism Consulting
+# ─── PAGE CONFIG ───
+st.set_page_config(
+    page_title="GEO-Readiness Checker | Gernot Riedel Tourism Consulting",
+    page_icon="🏔",
+    layout="centered",
+    initial_sidebar_state="collapsed"
+)
 
-Automatisierte GEO-Optimierungspaket-Erstellung für Tourismus-Betriebe (Hotels, TVBs, DMOs) im DACH-Raum. Kombiniert Website-Analyse mit fertig formulierten Optimierungstexten als verkaufbares Produkt (€ 149).
+# ─── CUSTOM CSS ───
+st.markdown("""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&display=swap');
 
----
-
-## Produktportfolio
-
-### GEO-Optimierungspaket Professional — € 149 (einmalig)
-Das Kernprodukt. 7 fertige Lieferungen für einen Betrieb:
-
-1. **FAQ-Sektion** — 10 Fragen & Antworten, KI-optimiert
-2. **H1-Titel + Subheadline** — Startseite neu, max 70 / 120 Zeichen
-3. **USP-Box** — 4 Alleinstellungsmerkmale mit Emoji, Titel, 1 Satz
-4. **Lokale Keywords** — 20 Begriffe für die Region
-5. **Google Business Profil-Text** — max 750 Zeichen, keyword-reich
-6. **Meta-Descriptions** — Startseite, Zimmer, Preise (je max 155 Zeichen)
-7. **"Über uns" neu** — 250–300 Wörter, KI-lesbar, mit Geschichte/Lage/USPs
-
-**Preis:** € 149 einmalig, kein Abo
-**Lieferung:** Fertig formatiertes Dokument per E-Mail innerhalb 24h
-**Aufwand Gernot:** ca. 20 Minuten pro Betrieb
-
-### ReviewRadar — ab € 149 (einmalig)
-Upsell nach GEO-Paket. Bewertungsanalyse für Hotels.
-- Quick Insight: € 149 (1 Plattform, 200 Bewertungen)
-- Professional: € 349 (2 Plattformen, 400 Bewertungen) ← Bestseller
-- Premium: € 599 (4 Plattformen, 800 Bewertungen + Wettbewerb)
-
-Link: gernot-riedel.com/hotelbewertungen-analyse-mehr-umsatz-direktbuchungen-reviewradar/
-
----
-
-## Workflow: Vollständiges Paket für einen Betrieb erstellen
-
-### Schritt 1: Website analysieren
-```
-web_fetch(url) → Inhalte lesen
-```
-Relevante Daten notieren: Name, Adresse, Telefon, Zimmertypen, USPs, Region, Aktivitäten, Besonderheiten.
-
-### Schritt 2: 7 GEO-Lieferungen erstellen
-Alle Texte direkt aus den Website-Informationen ableiten — **keine eigenständigen Schlussfolgerungen** (siehe Kernregel unten).
-
-### Schritt 3: Gesamtdokument ausgeben
-Reihenfolge im Dokument:
-1. GEO-Score + Zusammenfassung
-2. Lieferungen 1–7 (GEO-Optimierungstexte)
-3. Upsell-Hinweis ReviewRadar
-
-### Schritt 4: E-Mail-Text + Rechnung
-- E-Mail-Begleittext für Kundenversand formulieren
-- Rechnungshinweis: € 149, Leistung "GEO-Optimierungspaket Professional, Website [url]"
-- Empfänger: Betrieb (Name, Adresse von Website)
-- Hinweis: Gernot versendet manuell von gernotriedel@icloud.com
-
----
-
-## NAP-Konsistenz-Check (separater Chat-Prozess)
-
-Der NAP-Check ist **kein Teil des GEO-Pakets**, sondern ein eigenständiges Analyse-Tool das Gernot bei Bedarf im Chat durchführt.
-
-**Trigger:** Gernot sagt "NAP prüfen für [Betrieb]" oder fragt nach Plattform-Konsistenz.
-
-**Prozess:** web_search nach Betriebsname + Ort auf Google Business, Booking.com, TripAdvisor, HolidayCheck, TVB-Eintrag → Vergleich mit offiziellen Stammdaten von der Website.
-
-**Bewertung:**
-- ✅ OK: Daten konsistent (Formatvarianten toleriert: +43 664 = 0664)
-- ⚠️ WARNUNG: Leere Felder, nicht verifizierbar
-- ❌ KRITISCH: Anderer Name, andere Adresse, andere Telefonnummer
-
----
-
-## KERNREGEL: Keine eigenständigen Schlussfolgerungen
-
-**Diese Regel gilt absolut und ausnahmslos für alle Ausarbeitungen:**
-
-✅ Informationen von der Website werden **wörtlich und exakt** übernommen
-✅ Regionale Angaben bleiben regional — sie werden **nicht dem Betrieb direkt zugeschrieben**
-✅ Zahlen und Fakten werden **nur so verwendet wie sie explizit auf der Website stehen**
-❌ Keine Verknüpfung von regionalen Daten mit dem Betrieb (Beispiel: "171 km Skipisten" der Region ≠ "Hotel mit Zugang zu 171 km Skipisten")
-❌ Keine Interpretation oder Kombination von Informationen die so nicht auf der Website stehen
-❌ Bei unklaren Zusammenhängen: Hinweis "bitte prüfen" statt eigener Interpretation
-
-**Hintergrund:** In einem Test wurde die regionale Angabe "171 km Skipisten der SkiWelt" fälschlicherweise als "Hotel direkt am Skilift mit Zugang zu 171 km" formuliert. Korrekt wäre gewesen: Hotel Park liegt am Skigebiet St. Johann in Tirol (42 km Pisten). Dieser Fehler darf sich nicht wiederholen.
-
----
-
-## Streamlit App — Technische Details
-
-### Live-URL
-https://geo-readiness-checker-mfk6vheyexwrqfkxmqvcav.streamlit.app
-
-### NAP-Checker App (separates Tool, bei Bedarf)
-https://nap-consistency-checker.streamlit.app
-→ Nur relevant wenn Betriebe selbst prüfen sollen. Für Gernots eigene Arbeit: Chat-Abfrage bevorzugen (schneller, genauer).
-
-### GitHub Repository
-geo-readiness-checker (Gernots GitHub-Account)
-
-### Datei
-geo_checker_app.py
-
-### Secrets (Streamlit Cloud)
-```
-ANTHROPIC_API_KEY = "..."
-ZAPIER_WEBHOOK_URL = "..."
-```
-
-### App-Logik
-1. Formular: Betriebsname, Ort, Website-URL, Betriebstyp
-2. Claude-API-Aufruf (claude-opus-4-5, max_tokens: 4000)
-3. JSON-Response mit Score, Faktoren, Quick Wins + vollständigem Paket
-4. Anzeige: Score + Faktoren + Quick Wins (sichtbar)
-5. Teaser-Block: 7 Lieferungen angekündigt aber **nicht gezeigt** (Verkaufsprinzip)
-6. Kaufbutton → Webhook → Zapier → E-Mail an Betrieb + E-Mail an Gernot
-
-### Verkaufsprinzip (wichtig!)
-Der Betrieb sieht nach der Analyse:
-- ✅ Score (0–50)
-- ✅ Faktor-Analyse (5 Faktoren)
-- ✅ Quick Wins (5 Maßnahmen)
-- ✅ Teaser mit allen 7 Lieferungen angekündigt (Kacheln)
-- ❌ Inhalte der Lieferungen NICHT sichtbar — erst nach Kauf
-
-### JSON-Parsing (robuste Extraktion)
-```python
-if "```" in text:
-    text = text.split("```")[1]
-    if text.startswith("json"):
-        text = text[4:]
-start = text.find("{")
-end = text.rfind("}") + 1
-text = text[start:end]
-return json.loads(text)
-```
-
-### JSON-Struktur (Claude-Prompt Ausgabe)
-```json
-{
-  "gesamtscore": 0-50,
-  "faktoren": [5 Objekte mit name/score/kommentar],
-  "quickwins": [5 Objekte mit prioritaet/massnahme/impact],
-  "zusammenfassung": "2-3 Sätze",
-  "paket": {
-    "faq": [10 Objekte mit frage/antwort],
-    "h1_neu": "...",
-    "h1_sub": "...",
-    "usp_box": [4 Objekte mit emoji/titel/text],
-    "keywords": [20 Strings],
-    "google_business": "...",
-    "meta_start": "...",
-    "meta_zimmer": "...",
-    "meta_preise": "...",
-    "ueber_uns": "..."
-  }
+html, body, [class*="css"] {
+    font-family: 'DM Sans', sans-serif;
 }
-```
 
----
-
-## Zapier-Automation
-
-### Trigger
-Webhooks by Zapier → Catch Hook (Pro-Feature, $20/Monat)
-
-### Action 1 — E-Mail an Betrieb (Microsoft Outlook)
-- To: {{email}} aus Webhook
-- Subject: "Ihr GEO-Readiness Report ist fertig — {{betrieb}}"
-- Body: Bestätigung + Lieferversprechen 24h + Kontaktdaten Gernot
-
-### Action 2 — E-Mail an Gernot (Microsoft Outlook)
-- To: kontakt@gernot-riedel.com
-- Subject: "🔔 NEUER LEAD: {{betrieb}} (Score: {{score}}/50)"
-- Body: Alle Lead-Daten + Handlungsanleitung (Claude öffnen → Texte erstellen → versenden → Rechnung)
-
-### Webhook-Payload (JSON)
-```json
-{
-  "betrieb": "...",
-  "ort": "...",
-  "email": "...",
-  "website": "...",
-  "typ": "...",
-  "score": 0-50,
-  "datum": "...",
-  "zusammenfassung": "...",
-  "faktoren": [...],
-  "quickwins": [...],
-  "produkt": "GEO-Optimierungspaket Professional",
-  "preis": "149"
+.main-header {
+    background: linear-gradient(135deg, #1a2332 0%, #2d4a3e 100%);
+    padding: 36px 32px 28px;
+    border-radius: 8px;
+    margin-bottom: 28px;
+    position: relative;
 }
-```
 
----
+.main-header h1 {
+    color: #ffffff;
+    font-size: 32px;
+    font-weight: 700;
+    margin: 0 0 8px 0;
+    line-height: 1.2;
+}
 
-## Kontaktdaten Gernot Riedel
+.main-header h1 span { color: #c9a84c; }
 
-- **E-Mail:** kontakt@gernot-riedel.com (geschäftlich)
-- **E-Mail:** gernotriedel@icloud.com (persönlich, für Pakete)
-- **Telefon:** +43 676 7237811
-- **Website:** gernot-riedel.com
-- **Hashtags:** #GernotGoesAI #GernotGoesKI
+.main-header p {
+    color: rgba(255,255,255,0.7);
+    font-size: 15px;
+    margin: 0;
+    line-height: 1.6;
+}
 
----
+.brand-tag {
+    display: inline-block;
+    background: rgba(201,168,76,0.2);
+    border: 1px solid rgba(201,168,76,0.4);
+    color: #e8c97a;
+    padding: 4px 12px;
+    border-radius: 2px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-bottom: 16px;
+}
 
-## Häufige Trigger-Phrasen
+.score-box {
+    background: linear-gradient(135deg, #1a2332, #2d4a3e);
+    border-radius: 8px;
+    padding: 24px;
+    text-align: center;
+    color: white;
+}
 
-Verwende diesen Skill wenn Gernot sagt:
-- "Erstelle GEO-Optimierungspaket für [Betrieb]"
-- "Analysiere [Website] für GEO"
-- "GEO-Checker Code anpassen / erweitern"
-- "Neuer Lead aus dem Checker"
-- "Rechnung über 149 Euro ausstellen"
-- "Fertige Texte per E-Mail senden"
-- "NAP prüfen für [Betrieb]"
-- "Prüfe NAP-Konsistenz"
-- "Sind die Daten auf allen Plattformen konsistent?"
+.score-number {
+    font-size: 56px;
+    font-weight: 800;
+    line-height: 1;
+}
 
----
+.score-excellent { color: #7ab89a; }
+.score-good { color: #c9a84c; }
+.score-poor { color: #e67e22; }
+.score-critical { color: #c0392b; }
 
-## Umsatzpotenzial (Referenz)
+.factor-card {
+    background: #f8f6f2;
+    border-left: 4px solid #3d7a5e;
+    padding: 16px 20px;
+    border-radius: 0 6px 6px 0;
+    margin-bottom: 12px;
+}
 
-Bei 10 Outreaches/Monat + 20% Conversion:
-- 2 GEO-Pakete à € 149 = € 298
-- 1 ReviewRadar à € 349 = € 349
-- **Gesamt: ca. € 650/Monat** bei ~40 Min Aufwand gesamt
+.win-sofort { background: #fde8e8; border-left: 4px solid #c0392b; padding: 12px 16px; border-radius: 0 6px 6px 0; margin-bottom: 8px; }
+.win-kurz   { background: #fef3e2; border-left: 4px solid #e67e22; padding: 12px 16px; border-radius: 0 6px 6px 0; margin-bottom: 8px; }
+.win-mittel { background: #eaf5f0; border-left: 4px solid #27ae60; padding: 12px 16px; border-radius: 0 6px 6px 0; margin-bottom: 8px; }
+
+.cta-box {
+    background: linear-gradient(135deg, #1a2332 0%, #2d4a3e 100%);
+    border-radius: 8px;
+    padding: 28px 32px;
+    color: white;
+    margin-top: 24px;
+}
+
+.footer-bar {
+    background: #1a2332;
+    color: rgba(255,255,255,0.5);
+    padding: 16px 24px;
+    border-radius: 8px;
+    text-align: center;
+    font-size: 12px;
+    margin-top: 40px;
+}
+
+div[data-testid="stForm"] {
+    background: white;
+    padding: 24px;
+    border-radius: 8px;
+    border: 1px solid #e8e3da;
+}
+
+.stButton > button {
+    background: #3d7a5e !important;
+    color: white !important;
+    font-weight: 700 !important;
+    font-size: 16px !important;
+    padding: 14px 28px !important;
+    border-radius: 4px !important;
+    border: none !important;
+    width: 100% !important;
+}
+
+.stButton > button:hover {
+    background: #2d4a3e !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
+# ─── HEADER ───
+st.markdown("""
+<div class="main-header">
+    <div class="brand-tag">🏔 Gernot Riedel Tourism Consulting</div>
+    <h1>GEO-Readiness <span>Checker</span></h1>
+    <p>Kostenlose Website-Analyse für Tourismusbetriebe im DACH-Raum.<br>
+    Erfahren Sie in 60 Sekunden, wie gut Ihr Betrieb in der KI-gestützten Suche sichtbar ist.</p>
+</div>
+""", unsafe_allow_html=True)
+
+# ─── SESSION STATE ───
+if "leads" not in st.session_state:
+    st.session_state.leads = []
+if "result" not in st.session_state:
+    st.session_state.result = None
+if "show_leads" not in st.session_state:
+    st.session_state.show_leads = False
+
+# ─── GET API KEY ───
+def get_api_key():
+    try:
+        return st.secrets["ANTHROPIC_API_KEY"]
+    except:
+        return None
+
+# ─── MULTI-PAGE CRAWLER ───
+def crawl_website(base_url):
+    """Crawlt die wichtigsten Seiten einer Hotel-Website via Sitemap + direkte FAQ-Suche."""
+    import requests
+    import re
+    from html.parser import HTMLParser
+    from urllib.parse import urljoin, urlparse
+
+    class TextExtractor(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.text_parts = []
+            self.links = []
+            self.skip_tags = {"script", "style", "head", "noscript", "iframe"}
+            self.current_skip = 0
+            self.headings = []
+            self.in_heading = False
+            self.current_tag = ""
+        def handle_starttag(self, tag, attrs):
+            if tag in self.skip_tags:
+                self.current_skip += 1
+            self.current_tag = tag
+            if tag in ("h1", "h2", "h3"):
+                self.in_heading = True
+            if tag == "a":
+                for attr, val in attrs:
+                    if attr == "href" and val:
+                        self.links.append(val)
+        def handle_endtag(self, tag):
+            if tag in self.skip_tags:
+                self.current_skip = max(0, self.current_skip - 1)
+            if tag in ("h1", "h2", "h3"):
+                self.in_heading = False
+        def handle_data(self, data):
+            if self.current_skip == 0:
+                text = data.strip()
+                if text and len(text) > 2:
+                    if self.in_heading:
+                        self.headings.append(f"[{self.current_tag.upper()}] {text}")
+                    self.text_parts.append(text)
+        def get_text(self):
+            return " ".join(self.text_parts)
+
+    if not base_url.startswith("http"):
+        base_url = "https://" + base_url
+    base_url = base_url.rstrip("/")
+    parsed_base = urlparse(base_url)
+    base_domain = parsed_base.netloc
+
+    headers = {
+        "User-Agent": "Mozilla/5.0 (compatible; GEO-Checker/1.0)",
+        "Accept": "text/html,application/xhtml+xml",
+        "Accept-Language": "de-AT,de;q=0.9"
+    }
+
+    faq_patterns = ["faq", "haeufig", "faq.html", "faq.php"]
+    content_patterns = [
+        "zimmer", "rooms", "appartement", "wohnung", "suite",
+        "ueber", "about", "uns", "lage", "anreise",
+        "wellness", "spa", "angebot", "preise",
+        "aktivitaet", "sommer", "winter", "service",
+        "gut-zu-wissen", "buchungsinformation"
+    ]
+
+    pages_content = {}
+
+    def fetch_page(url):
+        try:
+            resp = requests.get(url, headers=headers, timeout=10, allow_redirects=True)
+            if resp.status_code == 200 and "text/html" in resp.headers.get("content-type", ""):
+                html = resp.text
+                parser = TextExtractor()
+                parser.feed(html)
+                text = parser.get_text()
+
+                faq_spans = re.findall(r'<span>([^<]{15,200}\?)</span>', html)
+                if faq_spans:
+                    text = text + "\n\nFAQ-FRAGEN AUF DIESER SEITE:\n" + "\n".join(f"- {q}" for q in faq_spans[:30])
+
+                return text[:4000], parser.headings[:20], parser.links
+        except Exception:
+            pass
+        return None, [], []
+
+    def get_urls_from_sitemap(base):
+        found_urls = []
+        sitemap_candidates = [
+            base + "/sitemap.xml",
+            base + "/sitemap_index.xml",
+            base + "/sitemap.php",
+        ]
+        for sitemap_url in sitemap_candidates:
+            try:
+                r = requests.get(sitemap_url, headers=headers, timeout=8)
+                if r.status_code == 200:
+                    urls = re.findall(r'<loc>(https?://[^<]+)</loc>', r.text)
+                    for u in urls:
+                        if base_domain in u and u not in found_urls:
+                            found_urls.append(u)
+                    if found_urls:
+                        break
+            except Exception:
+                pass
+        return found_urls
+
+    text, headings, links = fetch_page(base_url)
+    if text:
+        pages_content["Startseite"] = {"text": text, "headings": headings}
+
+    sitemap_urls = get_urls_from_sitemap(base_url)
+
+    faq_crawled = False
+    faq_candidates = []
+
+    de_faq = []
+    other_faq = []
+    for u in sitemap_urls:
+        path_lower = urlparse(u).path.lower()
+        if any(p in path_lower for p in faq_patterns):
+            if "/de/" in path_lower or path_lower.endswith("/de"):
+                de_faq.append(u)
+            elif "/en/" not in path_lower and "/fr/" not in path_lower:
+                other_faq.append(u)
+    faq_candidates = de_faq + other_faq
+
+    for link in links:
+        full_url = urljoin(base_url, link).rstrip("/")
+        path_lower = urlparse(full_url).path.lower()
+        if base_domain in full_url and any(p in path_lower for p in faq_patterns):
+            if full_url not in faq_candidates:
+                faq_candidates.append(full_url)
+
+    for faq_url in faq_candidates[:2]:
+        t, h, _ = fetch_page(faq_url)
+        if t:
+            pages_content["FAQ-Seite"] = {"text": t, "headings": h}
+            faq_crawled = True
+            break
+
+    seen_urls = {base_url} | set(faq_candidates)
+    priority_urls = []
+
+    exclude_patterns = ["datenschutz", "cookie", "impressum", "agb", "privacy",
+                       "sitemap", "robots", ".xml", ".pdf", "login", "admin"]
+    url_pool = sitemap_urls if sitemap_urls else [urljoin(base_url, l) for l in links]
+
+    for u in url_pool:
+        u_clean = u.rstrip("/")
+        if u_clean in seen_urls:
+            continue
+        parsed = urlparse(u_clean)
+        if base_domain not in parsed.netloc:
+            continue
+        path_lower = parsed.path.lower()
+        if any(ex in path_lower for ex in exclude_patterns):
+            continue
+        for pattern in content_patterns:
+            if pattern in path_lower:
+                priority_urls.append((4, u_clean, path_lower))
+                seen_urls.add(u_clean)
+                break
+
+    priority_urls.sort(reverse=True)
+
+    for _, sub_url, sub_path in priority_urls[:5]:
+        page_name = sub_path.strip("/").split("/")[-1][:40]
+        t, h, _ = fetch_page(sub_url)
+        if t:
+            pages_content[page_name] = {"text": t, "headings": h}
+
+    return pages_content
+
+
+def format_crawl_for_prompt(pages_content):
+    if not pages_content:
+        return "Keine Website-Inhalte konnten geladen werden."
+    output = []
+    for page_name, data in pages_content.items():
+        output.append(f"\n=== SEITE: {page_name.upper()} ===")
+        if data.get("headings"):
+            headings = data["headings"]
+            faq_fragen = [h for h in headings if h.startswith("[SPAN]") and "?" in h]
+            normale_headings = [h for h in headings if not h.startswith("[SPAN]")]
+            if normale_headings:
+                output.append("UEBERSCHRIFTEN: " + " | ".join(normale_headings[:10]))
+            if faq_fragen:
+                output.append(f"FAQ-SEKTION VORHANDEN ({len(faq_fragen)} Fragen gefunden):")
+                for fq in faq_fragen:
+                    output.append("  " + fq.replace("[SPAN] ", "- "))
+        output.append("TEXT: " + data["text"][:2500])
+    return "\n".join(output)
+
+
+# ─── ROBUSTE JSON-PARSE FUNKTION ───
+def safe_json_parse(raw):
+    """
+    Robuste JSON-Extraktion aus Claude-Antworten.
+    Behandelt: reines JSON, ```json Blöcke, ``` Blöcke, JSON mit führendem Text.
+    """
+    if not raw or not raw.strip():
+        raise ValueError("Leere Antwort von Claude API")
+
+    text = raw.strip()
+
+    # Fall 1: Markdown-Codeblock mit ```json oder ```
+    if "```" in text:
+        parts = text.split("```")
+        for part in parts:
+            part = part.strip()
+            # json-Label entfernen falls vorhanden
+            if part.lower().startswith("json"):
+                part = part[4:].strip()
+            if part.startswith("{"):
+                text = part
+                break
+
+    # Fall 2: JSON-Objekt direkt extrahieren (erstes { bis letztes })
+    start = text.find("{")
+    end = text.rfind("}") + 1
+    if start >= 0 and end > start:
+        text = text[start:end]
+    else:
+        raise ValueError(f"Kein JSON-Objekt gefunden. Antwort beginnt mit: {raw[:300]}")
+
+    # Fall 3: Trailing Commas bereinigen (häufiger Claude-Fehler)
+    import re
+    text = re.sub(r',\s*}', '}', text)
+    text = re.sub(r',\s*]', ']', text)
+
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"JSON-Parse-Fehler: {e}\nText (erste 500 Zeichen): {text[:500]}")
+
+
+def run_analysis(hotel_name, location, url, business_type):
+    api_key = get_api_key()
+    if not api_key:
+        st.error("❌ API-Key nicht konfiguriert. Bitte in Streamlit Secrets eintragen (ANTHROPIC_API_KEY).")
+        return None
+
+    with st.spinner("\U0001f50d Website wird gecrawlt... (Startseite + relevante Unterseiten)"):
+        pages_content = crawl_website(url)
+        website_content = format_crawl_for_prompt(pages_content)
+        pages_found = list(pages_content.keys())
+
+    crawl_info = f"Gecrawlte Seiten ({len(pages_found)}): {', '.join(pages_found)}"
+
+    client = anthropic.Anthropic(api_key=api_key)
+
+    # ── CALL 1: Analyse-Report ──
+    analyse_prompt = f"""Du bist GEO-Optimierungs-Experte fuer Tourismus-Websites im DACH-Raum.
+
+Betrieb: {hotel_name} | Ort: {location} | Typ: {business_type}
+{crawl_info}
+
+GECRAWLTE INHALTE:
+{website_content[:8000]}
+
+Bewerte diese 5 Faktoren (0-10) basierend auf den gecrawlten Inhalten:
+1. FAQ-Sektion: Strukturierte Fragen & Antworten vorhanden?
+2. H1-Optimierung: Ortsbezug und USP in Hauptueberschriften?
+3. Lokale Keywords: Region, Bundesland, Aktivitaeten, Saison?
+4. NAP-Konsistenz: Name, Adresse, Telefon vollstaendig & einheitlich?
+5. USP-Klarheit: Klare Alleinstellungsmerkmale kommuniziert?
+
+USP-Regel: Appartement mit Sauna/Panorama = echter USP. Hotel 3-4 Sterne mit Sauna = Standard.
+WICHTIG: Sei fair - wenn FAQ auf Unterseite vorhanden, ist das ein gutes Zeichen (6-8 Punkte).
+ACHTUNG JS-Websites: Wenn du "ZUSATZ-FAQ-INHALTE:" oder "FAQ:" Eintraege im Text siehst, sind das extrahierte Accordion-Fragen von Next.js/React-Seiten. Diese ZAEHLEN als vollwertige FAQ-Sektion (7-9 Punkte)!
+
+Antworte AUSSCHLIESSLICH als reines JSON-Objekt. Kein Markdown, keine Erklaerungen, keine Codeblocks.
+Beginne deine Antwort direkt mit {{ und beende sie mit }}
+
+{{
+  "gesamtscore": <0-50>,
+  "faktoren": [
+    {{"name": "FAQ-Sektion", "score": <0-10>, "kommentar": "<1 praegnanter Satz>"}},
+    {{"name": "H1-Optimierung", "score": <0-10>, "kommentar": "<1 praegnanter Satz>"}},
+    {{"name": "Lokale Keywords", "score": <0-10>, "kommentar": "<1 praegnanter Satz>"}},
+    {{"name": "NAP-Konsistenz", "score": <0-10>, "kommentar": "<1 praegnanter Satz>"}},
+    {{"name": "USP-Klarheit", "score": <0-10>, "kommentar": "<1 praegnanter Satz>"}}
+  ],
+  "quickwins": [
+    {{"prioritaet": "sofort", "massnahme": "<konkrete Massnahme>", "impact": "<messbarer Effekt>"}},
+    {{"prioritaet": "sofort", "massnahme": "<konkrete Massnahme>", "impact": "<messbarer Effekt>"}},
+    {{"prioritaet": "kurz", "massnahme": "<konkrete Massnahme>", "impact": "<messbarer Effekt>"}},
+    {{"prioritaet": "kurz", "massnahme": "<konkrete Massnahme>", "impact": "<messbarer Effekt>"}},
+    {{"prioritaet": "mittel", "massnahme": "<konkrete Massnahme>", "impact": "<messbarer Effekt>"}}
+  ],
+  "zusammenfassung": "<2-3 Saetze ehrliche Gesamtbewertung>"
+}}"""
+
+    with st.spinner("📊 Analysiere Website-Inhalte..."):
+        msg1 = client.messages.create(
+            model="claude-opus-4-5",
+            max_tokens=1500,
+            messages=[{"role": "user", "content": analyse_prompt}]
+        )
+
+    try:
+        result = safe_json_parse(msg1.content[0].text)
+    except ValueError as e:
+        st.error(f"❌ Fehler bei Analyse-Auswertung: {e}")
+        return None
+
+    # ── CALL 2: Optimierungspaket ──
+    paket_prompt = f"""Du erstellst das GEO-Optimierungspaket Professional fuer diesen Betrieb.
+
+Betrieb: {hotel_name} | Ort: {location} | Typ: {business_type}
+
+WEBSITE-INHALTE (gecrawlt):
+{website_content[:6000]}
+
+Erstelle auf Basis der tatsaechlichen Website-Inhalte:
+- FAQ: 10 Fragen+Antworten, KI-optimiert, zum Betrieb passend
+- H1_NEU: Optimierter Seitentitel (max 70 Zeichen, mit Ort+USP)
+- H1_SUB: Subheadline (max 120 Zeichen)
+- USP_BOX: 4 echte Alleinstellungsmerkmale (Emoji + Titel + 1 Satz)
+- KEYWORDS: 20 lokale Keywords fuer die Region
+- GOOGLE_BUSINESS: Google Business Text (max 750 Zeichen, keyword-reich)
+- META_START: Meta-Description Startseite (max 155 Zeichen)
+- META_ZIMMER: Meta-Description Zimmer/Appartements (max 155 Zeichen)
+- META_PREISE: Meta-Description Preise/Angebote (max 155 Zeichen)
+- UEBER_UNS: "Ueber uns" Text (250-300 Woerter, KI-lesbar, mit Lage+Geschichte+USPs)
+
+WICHTIG: Nur Fakten aus gecrawlten Inhalten verwenden. Keine Erfindungen.
+
+Antworte AUSSCHLIESSLICH als reines JSON-Objekt. Kein Markdown, keine Erklaerungen, keine Codeblocks.
+Beginne deine Antwort direkt mit {{ und beende sie mit }}
+
+{{
+  "faq": [{{"frage": "<Frage>", "antwort": "<Antwort>"}}],
+  "h1_neu": "<H1-Titel>",
+  "h1_sub": "<Subheadline>",
+  "usp_box": [{{"emoji": "<>", "titel": "<>", "text": "<1 Satz>"}}],
+  "keywords": ["<kw1>", "<kw2>"],
+  "google_business": "<Text>",
+  "meta_start": "<Meta>",
+  "meta_zimmer": "<Meta>",
+  "meta_preise": "<Meta>",
+  "ueber_uns": "<Text>"
+}}"""
+
+    with st.spinner("📦 Erstelle Optimierungspaket..."):
+        msg2 = client.messages.create(
+            model="claude-opus-4-5",
+            max_tokens=3000,
+            messages=[{"role": "user", "content": paket_prompt}]
+        )
+
+    try:
+        paket = safe_json_parse(msg2.content[0].text)
+    except ValueError as e:
+        st.error(f"❌ Fehler bei Paket-Erstellung: {e}")
+        return None
+
+    result["paket"] = paket
+    result["hotelName"] = hotel_name
+    result["location"] = location
+    result["url"] = url
+    result["type"] = business_type
+    result["email"] = ""
+    result["date"] = __import__("datetime").date.today().strftime("%d.%m.%Y")
+    return result
+
+# ─── PDF GENERATOR ───
+def sanitize(text):
+    if not text:
+        return ""
+    replacements = {
+        '\u2013': '-', '\u2014': '-', '\u2018': "'", '\u2019': "'",
+        '\u201c': '"', '\u201d': '"', '\u2026': '...', '\u2022': '*',
+        '\u00e4': 'ae', '\u00f6': 'oe', '\u00fc': 'ue',
+        '\u00c4': 'Ae', '\u00d6': 'Oe', '\u00dc': 'Ue',
+        '\u00df': 'ss', '\u00e9': 'e', '\u00e8': 'e', '\u00e0': 'a',
+        '\u2192': '->', '\u00b0': 'Grad', '\u20ac': 'EUR',
+    }
+    for k, v in replacements.items():
+        text = text.replace(k, v)
+    return text.encode('latin-1', errors='replace').decode('latin-1')
+
+def generate_pdf(r):
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_auto_page_break(auto=True, margin=15)
+
+    pdf.set_fill_color(26, 35, 50)
+    pdf.rect(0, 0, 210, 45, 'F')
+    pdf.set_font("Helvetica", "B", 20)
+    pdf.set_text_color(255, 255, 255)
+    pdf.set_xy(15, 10)
+    pdf.cell(0, 10, "GEO-Readiness Report", ln=True)
+    pdf.set_font("Helvetica", "", 12)
+    pdf.set_text_color(201, 168, 76)
+    pdf.set_x(15)
+    pdf.cell(0, 8, sanitize(r["hotelName"]), ln=True)
+    pdf.set_font("Helvetica", "", 9)
+    pdf.set_text_color(180, 190, 200)
+    pdf.set_x(15)
+    pdf.cell(0, 6, sanitize(f"{r['location']} | {r['type']} | Erstellt am {r['date']}"), ln=True)
+
+    score = r["gesamtscore"]
+    pdf.set_fill_color(61, 122, 94)
+    pdf.rect(158, 8, 38, 28, 'F')
+    pdf.set_font("Helvetica", "B", 26)
+    pdf.set_text_color(255, 255, 255)
+    pdf.set_xy(158, 12)
+    pdf.cell(38, 12, str(score), align="C", ln=False)
+    pdf.set_font("Helvetica", "", 8)
+    pdf.set_xy(158, 26)
+    pdf.cell(38, 6, "von 50 Punkten", align="C", ln=True)
+
+    pdf.ln(18)
+
+    pdf.set_fill_color(240, 237, 232)
+    pdf.set_text_color(80, 80, 80)
+    pdf.set_font("Helvetica", "I", 10)
+    pdf.set_x(15)
+    pdf.multi_cell(180, 6, sanitize(r.get("zusammenfassung", "")), fill=True)
+    pdf.ln(8)
+
+    pdf.set_font("Helvetica", "B", 13)
+    pdf.set_text_color(26, 35, 50)
+    pdf.set_x(15)
+    pdf.cell(0, 8, "Faktor-Analyse", ln=True)
+    pdf.ln(2)
+
+    for f in r["faktoren"]:
+        score_f = f["score"]
+        if score_f >= 8:
+            r_c, g_c, b_c = 39, 174, 96
+        elif score_f >= 5:
+            r_c, g_c, b_c = 230, 126, 34
+        else:
+            r_c, g_c, b_c = 192, 57, 43
+
+        pdf.set_font("Helvetica", "B", 10)
+        pdf.set_text_color(26, 35, 50)
+        pdf.set_x(15)
+        pdf.cell(140, 6, sanitize(f["name"]))
+        pdf.set_text_color(r_c, g_c, b_c)
+        pdf.cell(0, 6, f"{score_f}/10", ln=True)
+
+        pdf.set_fill_color(220, 220, 220)
+        pdf.rect(15, pdf.get_y(), 80, 3, 'F')
+        pdf.set_fill_color(r_c, g_c, b_c)
+        pdf.rect(15, pdf.get_y(), (score_f / 10) * 80, 3, 'F')
+        pdf.ln(5)
+
+        pdf.set_font("Helvetica", "", 9)
+        pdf.set_text_color(100, 110, 120)
+        pdf.set_x(15)
+        pdf.multi_cell(180, 5, sanitize(f["kommentar"]))
+        pdf.ln(3)
+
+    pdf.ln(4)
+    pdf.set_font("Helvetica", "B", 13)
+    pdf.set_text_color(26, 35, 50)
+    pdf.set_x(15)
+    pdf.cell(0, 8, "Quick Wins", ln=True)
+    pdf.ln(2)
+
+    prio_colors = {
+        "sofort": (192, 57, 43),
+        "kurz": (230, 126, 34),
+        "mittel": (39, 174, 96)
+    }
+    prio_labels = {"sofort": "SOFORT", "kurz": "KURZFRISTIG", "mittel": "MITTELFRISTIG"}
+
+    for w in r["quickwins"]:
+        rc, gc, bc = prio_colors.get(w["prioritaet"], (100, 100, 100))
+        pdf.set_fill_color(rc, gc, bc)
+        pdf.set_text_color(255, 255, 255)
+        pdf.set_font("Helvetica", "B", 8)
+        pdf.set_x(15)
+        pdf.cell(30, 6, prio_labels.get(w["prioritaet"], ""), fill=True)
+        pdf.set_font("Helvetica", "", 10)
+        pdf.set_text_color(26, 35, 50)
+        pdf.set_x(48)
+        pdf.multi_cell(157, 6, sanitize(w["massnahme"]))
+        pdf.set_font("Helvetica", "I", 9)
+        pdf.set_text_color(61, 122, 94)
+        pdf.set_x(48)
+        pdf.cell(0, 5, sanitize("-> " + w["impact"]), ln=True)
+        pdf.ln(2)
+
+    pdf.ln(6)
+    pdf.set_fill_color(26, 35, 50)
+    pdf.set_x(15)
+    y_start = pdf.get_y()
+    pdf.rect(15, y_start, 180, 28, 'F')
+    pdf.set_font("Helvetica", "B", 11)
+    pdf.set_text_color(201, 168, 76)
+    pdf.set_xy(20, y_start + 5)
+    pdf.cell(0, 7, "Detailberatung anfragen")
+    pdf.set_font("Helvetica", "", 9)
+    pdf.set_text_color(200, 210, 220)
+    pdf.set_xy(20, y_start + 13)
+    pdf.cell(0, 5, "kontakt@gernot-riedel.com  |  +43 676 7237811  |  gernot-riedel.com")
+
+    return bytes(pdf.output())
+
+# ─── MAIN FORM ───
+st.markdown("### Website-Analyse starten")
+
+with st.form("geo_form"):
+    col1, col2 = st.columns(2)
+    with col1:
+        hotel_name = st.text_input("Name des Betriebs", placeholder="z.B. Hotel Alpenblick")
+        business_type = st.selectbox("Betriebsart", [
+            "Hotel (3-4 Sterne)", "Hotel (5 Sterne)", "Pension / Gasthof",
+            "Ferienwohnung / Appartement", "Ferienhaus", "Tourismusverband / DMO"
+        ])
+    with col2:
+        location = st.text_input("Ort / Region", placeholder="z.B. Zell am See, Salzburg")
+        contact_email = st.text_input("Ihre E-Mail (für Report)", placeholder="name@hotel.at")
+
+    website_url = st.text_input("Website-URL", placeholder="https://www.ihr-hotel.at")
+    submitted = st.form_submit_button("🔍 Jetzt Website analysieren")
+
+# ─── ANALYSIS ───
+if submitted:
+    if not hotel_name or not website_url or not contact_email:
+        st.error("Bitte Betriebsname, Website-URL und E-Mail angeben.")
+    else:
+        with st.spinner("🤖 KI wertet gecrawlte Inhalte aus... Das dauert ca. 30–60 Sekunden."):
+            progress = st.progress(0)
+            import time
+            for i in range(0, 60, 10):
+                time.sleep(0.3)
+                progress.progress(i)
+
+            result = run_analysis(hotel_name, location, website_url, business_type)
+
+            progress.progress(100)
+            time.sleep(0.2)
+            progress.empty()
+
+        if result:
+            result["hotelName"] = hotel_name
+            result["location"] = location
+            result["type"] = business_type
+            result["email"] = contact_email
+            result["url"] = website_url
+            result["date"] = datetime.date.today().strftime("%d.%m.%Y")
+            st.session_state.result = result
+
+            st.session_state.leads.append({
+                "Betrieb": hotel_name,
+                "Ort": location,
+                "E-Mail": contact_email,
+                "Score": result["gesamtscore"],
+                "Typ": business_type,
+                "URL": website_url,
+                "Datum": result["date"],
+                "Zusammenfassung": result.get("zusammenfassung", "")
+            })
+
+# ─── RESULTS ───
+if st.session_state.result:
+    r = st.session_state.result
+    score = r["gesamtscore"]
+
+    st.markdown("---")
+    st.markdown(f"## 📊 Analyse: {r['hotelName']}")
+    st.caption(f"{r['location']} · {r['type']} · {r['date']}")
+
+    if score >= 40:
+        score_class = "score-excellent"
+        score_label = "Ausgezeichnet"
+    elif score >= 28:
+        score_class = "score-good"
+        score_label = "Gut"
+    elif score >= 16:
+        score_class = "score-poor"
+        score_label = "Verbesserungsbedarf"
+    else:
+        score_class = "score-critical"
+        score_label = "Kritisch"
+
+    col_score, col_summary = st.columns([1, 2])
+    with col_score:
+        st.markdown(f"""
+        <div class="score-box">
+            <div class="score-number {score_class}">{score}</div>
+            <div style="color:rgba(255,255,255,0.6);font-size:13px;margin-top:4px;">von 50 Punkten</div>
+            <div style="color:#c9a84c;font-weight:700;margin-top:8px;">{score_label}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with col_summary:
+        st.info(r.get("zusammenfassung", ""))
+
+    st.markdown("### Faktor-Analyse")
+    for f in r["faktoren"]:
+        s = f["score"]
+        bar_color = "#27ae60" if s >= 8 else "#e67e22" if s >= 5 else "#c0392b"
+        col_f1, col_f2 = st.columns([4, 1])
+        with col_f1:
+            st.markdown(f"**{f['name']}**")
+            st.progress(s / 10)
+            st.caption(f["kommentar"])
+        with col_f2:
+            st.markdown(f"<div style='font-size:28px;font-weight:800;color:{bar_color};text-align:center;padding-top:8px'>{s}<span style='font-size:14px;color:#aaa'>/10</span></div>", unsafe_allow_html=True)
+        st.markdown("---")
+
+    st.markdown("### ⚡ Quick Wins")
+    for w in r["quickwins"]:
+        css_class = f"win-{w['prioritaet']}"
+        label = {"sofort": "🔴 SOFORT", "kurz": "🟠 KURZFRISTIG", "mittel": "🟢 MITTELFRISTIG"}.get(w["prioritaet"], "")
+        st.markdown(f"""
+        <div class="{css_class}">
+            <strong>{label}</strong> &nbsp; {w['massnahme']}<br>
+            <span style="color:#3d7a5e;font-size:13px;">→ {w['impact']}</span>
+        </div>
+        """, unsafe_allow_html=True)
+
+    st.markdown("### 📄 Report herunterladen")
+    pdf_bytes = generate_pdf(r)
+    filename = f"GEO_Report_{r['hotelName'].replace(' ','_')}_{r['date'].replace('.','')}.pdf"
+    st.download_button(
+        label="📥 PDF-Report herunterladen",
+        data=pdf_bytes,
+        file_name=filename,
+        mime="application/pdf",
+        use_container_width=True
+    )
+
+    paket = r.get("paket", {})
+    if paket:
+        st.markdown("---")
+        st.markdown("""
+        <div style="background:linear-gradient(135deg,#1a2332,#2d4a3e);padding:28px 28px 24px;
+                    border-radius:8px;margin-bottom:8px">
+            <h3 style="color:#c9a84c;margin:0 0 12px 0">
+                📦 Ihr persönliches GEO-Optimierungspaket ist fertig
+            </h3>
+            <p style="color:rgba(255,255,255,0.9);margin:0 0 16px 0;font-size:15px;line-height:1.7">
+            Basierend auf dieser Analyse wurde für Ihren Betrieb ein 
+            <strong style="color:white">vollständiges Optimierungspaket</strong> erstellt —
+            mit allen Texten die Sie, ein Mitarbeiter oder Ihre Webagentur 
+            direkt in Ihre Website einbauen können.
+            </p>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px">
+                <div style="background:rgba(255,255,255,0.08);padding:10px 14px;border-radius:6px;
+                            border-left:3px solid #c9a84c">
+                    <div style="color:#c9a84c;font-size:11px;font-weight:700;letter-spacing:1px">LIEFERUNG 1</div>
+                    <div style="color:white;font-size:14px;margin-top:2px">📋 10 FAQ-Fragen + Antworten</div>
+                </div>
+                <div style="background:rgba(255,255,255,0.08);padding:10px 14px;border-radius:6px;
+                            border-left:3px solid #c9a84c">
+                    <div style="color:#c9a84c;font-size:11px;font-weight:700;letter-spacing:1px">LIEFERUNG 2</div>
+                    <div style="color:white;font-size:14px;margin-top:2px">🏷️ H1-Titel + Subheadline neu</div>
+                </div>
+                <div style="background:rgba(255,255,255,0.08);padding:10px 14px;border-radius:6px;
+                            border-left:3px solid #c9a84c">
+                    <div style="color:#c9a84c;font-size:11px;font-weight:700;letter-spacing:1px">LIEFERUNG 3</div>
+                    <div style="color:white;font-size:14px;margin-top:2px">⭐ USP-Box mit 4 Alleinstellungsmerkmalen</div>
+                </div>
+                <div style="background:rgba(255,255,255,0.08);padding:10px 14px;border-radius:6px;
+                            border-left:3px solid #c9a84c">
+                    <div style="color:#c9a84c;font-size:11px;font-weight:700;letter-spacing:1px">LIEFERUNG 4</div>
+                    <div style="color:white;font-size:14px;margin-top:2px">🔍 20 lokale Keywords</div>
+                </div>
+                <div style="background:rgba(255,255,255,0.08);padding:10px 14px;border-radius:6px;
+                            border-left:3px solid #c9a84c">
+                    <div style="color:#c9a84c;font-size:11px;font-weight:700;letter-spacing:1px">LIEFERUNG 5</div>
+                    <div style="color:white;font-size:14px;margin-top:2px">📍 Google Business Profil-Text</div>
+                </div>
+                <div style="background:rgba(255,255,255,0.08);padding:10px 14px;border-radius:6px;
+                            border-left:3px solid #c9a84c">
+                    <div style="color:#c9a84c;font-size:11px;font-weight:700;letter-spacing:1px">LIEFERUNG 6</div>
+                    <div style="color:white;font-size:14px;margin-top:2px">🔗 3 Meta-Descriptions</div>
+                </div>
+                <div style="background:rgba(255,255,255,0.08);padding:10px 14px;border-radius:6px;
+                            border-left:3px solid #c9a84c;grid-column:span 2">
+                    <div style="color:#c9a84c;font-size:11px;font-weight:700;letter-spacing:1px">LIEFERUNG 7</div>
+                    <div style="color:white;font-size:14px;margin-top:2px">📖 "Über uns" — komplett neu geschrieben (KI-optimiert)</div>
+                </div>
+            </div>
+            <p style="color:rgba(255,255,255,0.6);margin:0;font-size:13px;font-style:italic">
+            ✉️ Alle 7 Lieferungen erhalten Sie als fertig formatiertes Dokument per E-Mail —
+            innerhalb von 24 Stunden nach Ihrer Anfrage.
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+
+    st.markdown("""
+    <div class="cta-box">
+        <h3 style="color:#c9a84c;margin:0 0 8px 0">🚀 GEO-Optimierungspaket Professional — € 149</h3>
+        <p style="color:rgba(255,255,255,0.85);margin:0 0 6px 0;font-size:15px">
+        Alle 7 Lieferungen oben als fertiges Dokument — von Ihnen, einem Mitarbeiter oder Ihrer Webagentur umsetzbar:</p>
+        <p style="color:rgba(255,255,255,0.75);margin:0 0 16px 0;font-size:13px">
+        ✅ 10 FAQ-Fragen &nbsp;|&nbsp; ✅ H1-Titel + Subheadline &nbsp;|&nbsp; ✅ USP-Box &nbsp;|&nbsp;
+        ✅ 20 Keywords &nbsp;|&nbsp; ✅ Google Business Text &nbsp;|&nbsp;
+        ✅ 3 Meta-Descriptions &nbsp;|&nbsp; ✅ Über uns neu
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    if "anfrage_gesendet" not in st.session_state:
+        st.session_state.anfrage_gesendet = False
+
+    if not st.session_state.anfrage_gesendet:
+        if st.button("📩 Ja, ich möchte das GEO-Optimierungspaket für € 149", use_container_width=True, type="primary"):
+            with st.spinner("Ihre Anfrage wird verarbeitet..."):
+                try:
+                    import requests as req
+                    webhook_url = st.secrets.get("ZAPIER_WEBHOOK_URL", "")
+                    
+                    payload = {
+                        "betrieb": r["hotelName"],
+                        "ort": r["location"],
+                        "email": r["email"],
+                        "website": r["url"],
+                        "typ": r["type"],
+                        "score": r["gesamtscore"],
+                        "datum": r["date"],
+                        "zusammenfassung": r.get("zusammenfassung", ""),
+                        "faktoren": json.dumps(r["faktoren"], ensure_ascii=False),
+                        "quickwins": json.dumps(r["quickwins"], ensure_ascii=False),
+                        "produkt": "GEO-Optimierungspaket",
+                        "preis": "149 EUR"
+                    }
+                    
+                    if webhook_url:
+                        req.post(webhook_url, json=payload, timeout=10)
+                    
+                    st.session_state.anfrage_gesendet = True
+                    st.rerun()
+                    
+                except Exception as e:
+                    st.error(f"Fehler beim Senden: {e}")
+    else:
+        st.success("✅ Perfekt! Ihre Anfrage ist bei Gernot Riedel eingegangen. Sie erhalten innerhalb von 24 Stunden Ihre fertigen Optimierungstexte per E-Mail.")
+        st.info("📧 Bei Fragen: kontakt@gernot-riedel.com | 📞 +43 676 7237811")
+
+    st.markdown("""
+    <div style="background:#f5f0e8;border:1px solid #e8e3da;border-left:4px solid #c9a84c;
+                padding:20px 24px;border-radius:4px;margin-top:16px">
+        <h4 style="margin:0 0 8px 0;color:#1a2332">📊 Noch mehr Potenzial: ReviewRadar 2.0</h4>
+        <p style="margin:0 0 8px 0;color:#4a5568;font-size:14px">
+        Verwandeln Sie Ihre Gästebewertungen in garantierten Mehrumsatz. ReviewRadar 2.0 analysiert 
+        bis zu 800 Bewertungen von Booking.com, Google, TripAdvisor & HolidayCheck — und liefert 
+        Ihnen einen klaren Aktionsplan mit ROI-Kalkulation. Einmalig, kein Abo, keine laufenden Kosten.</p>
+        <p style="margin:0;font-size:14px">
+        <strong style="color:#c9a84c">ab € 149</strong> &nbsp;—&nbsp; 
+        3 Pakete: Quick Insight € 149 | Professional € 349 | Premium € 599 &nbsp;|&nbsp; 
+        <a href="https://gernot-riedel.com/hotelbewertungen-analyse-mehr-umsatz-direktbuchungen-reviewradar/" 
+        target="_blank" style="color:#3d7a5e;font-weight:600">Alle Pakete & Details →</a>
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+
+# ─── LEADS SECTION (Admin) ───
+st.markdown("---")
+with st.expander("📊 Gesammelte Leads anzeigen (Admin)", expanded=False):
+    if st.session_state.leads:
+        import pandas as pd
+        df = pd.DataFrame(st.session_state.leads)
+        st.dataframe(df, use_container_width=True)
+
+        csv_buffer = io.StringIO()
+        df.to_csv(csv_buffer, index=False, encoding="utf-8-sig")
+        st.download_button(
+            label="📥 Leads als CSV exportieren",
+            data=csv_buffer.getvalue().encode("utf-8-sig"),
+            file_name=f"geo_leads_{datetime.date.today()}.csv",
+            mime="text/csv",
+            use_container_width=True
+        )
+    else:
+        st.info("Noch keine Leads gesammelt.")
+
+# ─── FOOTER ───
+st.markdown("""
+<div class="footer-bar">
+    <strong style="color:#c9a84c">Gernot Riedel Tourism Consulting</strong> &nbsp;|&nbsp; 
+    TÜV-zertifizierter KI-Trainer &nbsp;|&nbsp; 
+    kontakt@gernot-riedel.com &nbsp;|&nbsp; 
+    +43 676 7237811
+</div>
+""", unsafe_allow_html=True)
