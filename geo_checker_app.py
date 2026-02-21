@@ -357,8 +357,11 @@ def format_crawl_for_prompt(pages_content):
 def safe_json_parse(raw):
     """
     Robuste JSON-Extraktion aus Claude-Antworten.
-    Behandelt: reines JSON, ```json Blöcke, ``` Blöcke, JSON mit führendem Text.
+    Behandelt: reines JSON, ```json Blöcke, ``` Blöcke, JSON mit führendem Text,
+    unescapte Anführungszeichen in Strings, Trailing Commas, Sonderzeichen.
     """
+    import re
+
     if not raw or not raw.strip():
         raise ValueError("Leere Antwort von Claude API")
 
@@ -369,7 +372,6 @@ def safe_json_parse(raw):
         parts = text.split("```")
         for part in parts:
             part = part.strip()
-            # json-Label entfernen falls vorhanden
             if part.lower().startswith("json"):
                 part = part[4:].strip()
             if part.startswith("{"):
@@ -384,10 +386,53 @@ def safe_json_parse(raw):
     else:
         raise ValueError(f"Kein JSON-Objekt gefunden. Antwort beginnt mit: {raw[:300]}")
 
-    # Fall 3: Trailing Commas bereinigen (häufiger Claude-Fehler)
-    import re
+    # Fall 3: Trailing Commas bereinigen
     text = re.sub(r',\s*}', '}', text)
     text = re.sub(r',\s*]', ']', text)
+
+    # Fall 4: Direkt parsen versuchen
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+
+    # Fall 5: Deutsche/typografische Anführungszeichen durch Standard ersetzen
+    text = text.replace('\u201c', '\\"').replace('\u201d', '\\"')
+    text = text.replace('\u2018', "\\'").replace('\u2019', "\\'")
+    text = text.replace('\u2013', '-').replace('\u2014', '-')
+
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+
+    # Fall 6: Zeilenumbrüche in JSON-Strings escapen
+    # Findet unescapte Newlines innerhalb von String-Werten und ersetzt sie
+    def fix_newlines_in_strings(s):
+        result = []
+        in_string = False
+        escape_next = False
+        for ch in s:
+            if escape_next:
+                result.append(ch)
+                escape_next = False
+            elif ch == '\\':
+                result.append(ch)
+                escape_next = True
+            elif ch == '"':
+                result.append(ch)
+                in_string = not in_string
+            elif in_string and ch == '\n':
+                result.append('\\n')
+            elif in_string and ch == '\r':
+                result.append('\\r')
+            elif in_string and ch == '\t':
+                result.append('\\t')
+            else:
+                result.append(ch)
+        return ''.join(result)
+
+    text = fix_newlines_in_strings(text)
 
     try:
         return json.loads(text)
