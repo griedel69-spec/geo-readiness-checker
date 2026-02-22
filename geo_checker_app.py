@@ -595,6 +595,7 @@ ABSOLUTE PFLICHTREGELN — KEINE AUSNAHMEN:
 3. NIEMALS behaupten etwas "fehlt" wenn du es schlicht nicht gesehen hast.
 4. Nur bewerten was EXPLIZIT in den gecrawlten Inhalten steht.
 5. Bei NAP: Nur als vorhanden bewerten wenn Adresse UND Telefon im gecrawlten Text sichtbar sind.
+6. Quick Wins NUR fuer Faktoren erstellen die tatsaechlich bewertet wurden (Score > 0). Fuer Faktoren ohne Datenbasis (Score = 0) KEINE Quick Wins — es waere eine Empfehlung ohne Grundlage.
 """
 
     analyse_prompt = f"""Du bist GEO-Optimierungs-Experte fuer Tourismus-Websites im DACH-Raum.
@@ -628,13 +629,12 @@ Antworte NUR als JSON:
     {{"name": "USP-Klarheit", "score": <0-10>, "kommentar": "<1 praegnanter Satz>"}}
   ],
   "quickwins": [
-    {{"prioritaet": "sofort", "massnahme": "<konkrete Massnahme>", "impact": "<messbarer Effekt>"}},
-    {{"prioritaet": "sofort", "massnahme": "<konkrete Massnahme>", "impact": "<messbarer Effekt>"}},
-    {{"prioritaet": "kurz", "massnahme": "<konkrete Massnahme>", "impact": "<messbarer Effekt>"}},
-    {{"prioritaet": "kurz", "massnahme": "<konkrete Massnahme>", "impact": "<messbarer Effekt>"}},
-    {{"prioritaet": "mittel", "massnahme": "<konkrete Massnahme>", "impact": "<messbarer Effekt>"}}
+    // NUR fuer Faktoren mit Score > 0 und vorhandenen Daten Quick Wins erstellen.
+    // Fuer jeden Faktor mit Score = 0 (keine Daten) KEINEN Quick Win erstellen.
+    // Mindestens 1, maximal 5 Quick Wins — nur basierend auf tatsaechlich gecrawlten Inhalten.
+    {{"prioritaet": "sofort|kurz|mittel", "massnahme": "<nur wenn Datenbasis vorhanden>", "impact": "<messbarer Effekt>", "basierend_auf": "<welcher Faktor>"}}
   ],
-  "zusammenfassung": "<2-3 Saetze ehrliche Gesamtbewertung>"
+  "zusammenfassung": "<2-3 Saetze ehrliche Gesamtbewertung — explizit erwaehnen wenn Daten fehlten>"
 }}"""
 
     with st.spinner("📊 Analysiere Website-Inhalte..."):
