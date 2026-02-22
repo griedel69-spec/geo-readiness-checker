@@ -576,10 +576,32 @@ Antworte NUR als valides JSON ohne Markdown:
         return {}
 
     # ── CALL 1: Analyse-Report (kompakt, schnell) ──
+    # Datenverfügbarkeit pro Faktor prüfen
+    has_content = bool(website_content and len(website_content) > 200)
+    has_faq = "FAQ-FRAGEN" in website_content or "FAQ-SEKTION" in website_content
+    has_headings = "UEBERSCHRIFTEN:" in website_content
+    has_nap_data = any(kw in website_content for kw in ["Tel", "Telefon", "+43", "+49", "+41", "Adresse", "Straße", "Gasse", "Platz", "Weg ", "Str.", "@"])
+
+    datenverfuegbarkeit = f"""
+DATENVERFUEGBARKEIT (PFLICHTHINWEIS):
+- Website-Inhalte geladen: {"JA" if has_content else "NEIN — keine Daten verfuegbar"}
+- FAQ-Daten vorhanden: {"JA" if has_faq else "NEIN"}
+- Ueberschriften-Daten vorhanden: {"JA" if has_headings else "NEIN"}
+- NAP-Daten (Adresse/Telefon) vorhanden: {"JA" if has_nap_data else "NEIN"}
+
+ABSOLUTE PFLICHTREGELN — KEINE AUSNAHMEN:
+1. Wenn fuer einen Faktor KEINE DATEN vorhanden sind: Score = 0, Kommentar = "Keine Website-Daten verfuegbar — Bewertung nicht moeglich."
+2. NIEMALS Annahmen treffen oder aus deinem Trainingswissen ergaenzen.
+3. NIEMALS behaupten etwas "fehlt" wenn du es schlicht nicht gesehen hast.
+4. Nur bewerten was EXPLIZIT in den gecrawlten Inhalten steht.
+5. Bei NAP: Nur als vorhanden bewerten wenn Adresse UND Telefon im gecrawlten Text sichtbar sind.
+"""
+
     analyse_prompt = f"""Du bist GEO-Optimierungs-Experte fuer Tourismus-Websites im DACH-Raum.
 
 Betrieb: {hotel_name} | Ort: {location} | Typ: {business_type}
 {crawl_info}
+{datenverfuegbarkeit}
 
 GECRAWLTE INHALTE:
 {website_content[:8000]}
