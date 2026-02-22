@@ -841,17 +841,17 @@ if st.session_state.result:
     )
 
     paket = r.get("paket", {})
-    if paket:
+    if paket and not st.session_state.get("anfrage_gesendet", False):
         st.markdown("---")
         st.markdown("""
         <div style="background:linear-gradient(135deg,#1a2332,#2d4a3e);padding:28px 28px 24px;
                     border-radius:8px;margin-bottom:8px">
             <h3 style="color:#c9a84c;margin:0 0 12px 0">
-                📦 Ihr persönliches GEO-Optimierungspaket ist fertig
+                📦 Ihr persönliches GEO-Optimierungspaket — bereit zur Erstellung
             </h3>
             <p style="color:rgba(255,255,255,0.9);margin:0 0 16px 0;font-size:15px;line-height:1.7">
-            Basierend auf dieser Analyse wurde für Ihren Betrieb ein 
-            <strong style="color:white">vollständiges Optimierungspaket</strong> erstellt —
+            Basierend auf dieser Analyse kann für Ihren Betrieb ein 
+            <strong style="color:white">vollständiges Optimierungspaket</strong> erstellt werden —
             mit allen Texten die Sie, ein Mitarbeiter oder Ihre Webagentur 
             direkt in Ihre Website einbauen können.
             </p>
@@ -893,8 +893,8 @@ if st.session_state.result:
                 </div>
             </div>
             <p style="color:rgba(255,255,255,0.6);margin:0;font-size:13px;font-style:italic">
-            ✉️ Alle 7 Lieferungen erhalten Sie als fertig formatiertes Dokument per E-Mail —
-            innerhalb von 24 Stunden nach Ihrer Anfrage.
+            ✉️ Nach Ihrer Bestellung erhalten Sie alle 7 Lieferungen als fertig formatiertes Dokument per E-Mail —
+            innerhalb von 24 Stunden.
             </p>
         </div>
         """, unsafe_allow_html=True)
@@ -946,8 +946,30 @@ if st.session_state.result:
                 except Exception as e:
                     st.error(f"Fehler beim Senden: {e}")
     else:
-        st.success("✅ Perfekt! Ihre Anfrage ist bei Gernot Riedel eingegangen. Sie erhalten innerhalb von 24 Stunden Ihre fertigen Optimierungstexte per E-Mail.")
-        st.info("📧 Bei Fragen: kontakt@gernot-riedel.com | 📞 +43 676 7237811")
+        st.markdown("""
+        <div style="background:linear-gradient(135deg,#1a2332,#2d4a3e);padding:28px 28px 24px;
+                    border-radius:8px;margin-bottom:8px;margin-top:16px">
+            <h3 style="color:#c9a84c;margin:0 0 12px 0">
+                ✅ Vielen Dank — Ihr GEO-Optimierungspaket wird jetzt erstellt!
+            </h3>
+            <p style="color:rgba(255,255,255,0.9);margin:0 0 16px 0;font-size:15px;line-height:1.7">
+            Gernot Riedel wurde über Ihre Bestellung informiert und erstellt Ihr persönliches 
+            Optimierungspaket mit <strong style="color:white">7 fertigen Texten</strong> speziell für Ihren Betrieb.
+            </p>
+            <div style="background:rgba(255,255,255,0.08);padding:16px 20px;border-radius:6px;
+                        border-left:3px solid #c9a84c;margin-bottom:16px">
+                <div style="color:#c9a84c;font-weight:700;margin-bottom:8px">📬 Was passiert als nächstes?</div>
+                <div style="color:rgba(255,255,255,0.85);font-size:14px;line-height:1.8">
+                    1. Sie erhalten innerhalb von <strong style="color:white">24 Stunden</strong> Ihr Paket per E-Mail<br>
+                    2. Alle 7 Texte sind sofort verwendbar — für Sie, Ihr Team oder Ihre Webagentur<br>
+                    3. Die Rechnung über € 149 erhalten Sie separat per E-Mail
+                </div>
+            </div>
+            <p style="color:rgba(255,255,255,0.6);margin:0;font-size:13px">
+            📧 Bei Fragen: kontakt@gernot-riedel.com &nbsp;|&nbsp; 📞 +43 676 7237811
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
 
     st.markdown("""
     <div style="background:#f5f0e8;border:1px solid #e8e3da;border-left:4px solid #c9a84c;
