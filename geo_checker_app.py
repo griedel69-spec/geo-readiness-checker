@@ -390,18 +390,48 @@ def run_analysis(hotel_name, location, url, business_type):
         website_content = format_crawl_for_prompt(pages_content)
         pages_found = list(pages_content.keys())
 
-    # Warnung bei blockierter Website
+    # Bot-Schutz erkannt: Analyse stoppen und klare Meldung ausgeben
     if crawl_status["blocked"]:
-        st.warning(
-            "⚠️ **Website konnte nicht vollständig gecrawlt werden** — "
-            "der Server blockiert automatische Zugriffe (Bot-Schutz aktiv). "
-            "Die Analyse basiert auf eingeschränkten oder keinen Website-Daten. "
-            "**NAP-Konsistenz und inhaltliche Faktoren können nicht zuverlässig bewertet werden.** "
-            "Für ein genaues Ergebnis bitte die Website-URL direkt im Browser prüfen."
-        )
+        st.error("❌ **Analyse nicht möglich — Website blockiert automatische Zugriffe**")
+        st.markdown(f"""
+<div style="background:#1a1a2e;border:2px solid #e74c3c;border-radius:12px;padding:24px;margin:16px 0;">
+    <h3 style="color:#e74c3c;margin-top:0;">🚫 Server-Blockierung erkannt</h3>
+    <p style="color:#ecf0f1;font-size:15px;">
+        Die Website <strong style="color:#f39c12;">{url}</strong> blockiert automatische Zugriffe (Bot-Schutz / Firewall aktiv).<br>
+        Eine GEO-Readiness-Analyse ist ohne lesbare Website-Inhalte nicht seriös möglich.
+    </p>
+    <hr style="border-color:#444;margin:16px 0;">
+    <h4 style="color:#f39c12;">📋 Was das für den Betrieb bedeutet:</h4>
+    <ul style="color:#ecf0f1;font-size:14px;line-height:1.8;">
+        <li>KI-Suchmaschinen (ChatGPT, Gemini, Perplexity) können diese Website <strong>ebenfalls nicht lesen</strong></li>
+        <li>Google kann Inhalte möglicherweise nicht vollständig indexieren</li>
+        <li>Der Betrieb ist in KI-Antworten faktisch <strong>unsichtbar</strong></li>
+        <li>Dies ist ein ernstes technisches Problem — unabhängig von der Content-Qualität</li>
+    </ul>
+    <hr style="border-color:#444;margin:16px 0;">
+    <h4 style="color:#27ae60;">💡 Deine Chance als KI-Trainer:</h4>
+    <p style="color:#ecf0f1;font-size:14px;">
+        Kontaktiere den Betrieb aktiv mit diesem Hinweis — die Server-Blockierung ist ein konkretes, 
+        lösbares Problem das sofortigen Handlungsbedarf signalisiert. Das ist ein starker Einstieg 
+        für ein Erstgespräch.
+    </p>
+    <div style="background:#0d3b2e;border-radius:8px;padding:16px;margin-top:12px;">
+        <strong style="color:#27ae60;">Empfohlener Kontakttext:</strong><br>
+        <em style="color:#bdc3c7;font-size:13px;">
+        "Guten Tag, bei einer technischen Überprüfung Ihrer Website haben wir festgestellt, 
+        dass {hotel_name} für KI-Suchmaschinen wie ChatGPT und Perplexity derzeit nicht sichtbar ist — 
+        Ihr Server blockiert automatische Zugriffe. Das bedeutet: Wer in einer KI nach Unterkünften 
+        in {location} sucht, findet Sie nicht. Gerne zeige ich Ihnen in einem kurzen Gespräch, 
+        wie das behoben werden kann."
+        </em>
+    </div>
+</div>
+""", unsafe_allow_html=True)
+        return None
 
-    crawl_info = f"Gecrawlte Seiten ({len(pages_found)}): {', '.join(pages_found) if pages_found else 'KEINE — Website blockiert Crawler'}"
-    crawl_hinweis = "WICHTIG: Diese Website blockiert automatische Crawler (503/Bot-Schutz). Es konnten keine Website-Inhalte geladen werden. Bewerte NAP-Konsistenz und alle inhaltsbasierten Faktoren mit 0-2 Punkten und erklaere dass keine Daten verfuegbar sind. Mache KEINE Annahmen ueber den Inhalt der Website." if crawl_status["blocked"] else ""
+    crawl_info = f"Gecrawlte Seiten ({len(pages_found)}): {', '.join(pages_found) if pages_found else 'KEINE'}"
+    crawl_hinweis = ""
+
 
 
     prompt = f"""Du bist ein Experte fuer GEO-Optimierung (Generative Engine Optimization) fuer Tourismus-Websites im DACH-Raum.
