@@ -529,8 +529,17 @@ Antworte NUR als valides JSON ohne Markdown:
     client = anthropic.Anthropic(api_key=api_key)
 
     def safe_json_parse(raw):
-        """Robuste JSON-Extraktion aus Claude-Antwort."""
+        """Robuste JSON-Extraktion aus Claude-Antwort mit mehreren Fallbacks."""
+        import re
         text = raw.strip()
+
+        # Versuch 1: Direkt parsen
+        try:
+            return json.loads(text)
+        except Exception:
+            pass
+
+        # Versuch 2: ```json ... ``` Block extrahieren
         if "```" in text:
             parts = text.split("```")
             for part in parts:
@@ -538,13 +547,33 @@ Antworte NUR als valides JSON ohne Markdown:
                 if part.startswith("json"):
                     part = part[4:].strip()
                 if part.startswith("{"):
-                    text = part
-                    break
+                    try:
+                        return json.loads(part)
+                    except Exception:
+                        pass
+
+        # Versuch 3: Erstes { bis letztes } extrahieren
         start = text.find("{")
         end = text.rfind("}") + 1
         if start >= 0 and end > start:
-            text = text[start:end]
-        return json.loads(text)
+            candidate = text[start:end]
+            try:
+                return json.loads(candidate)
+            except Exception:
+                pass
+
+        # Versuch 4: Trailing-Komma-Fehler beheben und nochmal versuchen
+        if start >= 0 and end > start:
+            candidate = text[start:end]
+            candidate = re.sub(r",\s*([}\]])", r"\1", candidate)  # trailing commas
+            candidate = re.sub(r"'([^']*)'\s*:", r'"\1":', candidate)  # single quotes keys
+            try:
+                return json.loads(candidate)
+            except Exception:
+                pass
+
+        # Kein valides JSON gefunden - leeres Fallback-Objekt zurückgeben
+        return {}
 
     # ── CALL 1: Analyse-Report (kompakt, schnell) ──
     analyse_prompt = f"""Du bist GEO-Optimierungs-Experte fuer Tourismus-Websites im DACH-Raum.
@@ -636,7 +665,12 @@ Antworte NUR als JSON:
             max_tokens=3000,
             messages=[{"role": "user", "content": paket_prompt}]
         )
-    paket = safe_json_parse(msg2.content[0].text)
+    try:
+        paket = safe_json_parse(msg2.content[0].text)
+    except Exception:
+        paket = {}
+    if not paket:
+        st.warning("⚠️ Optimierungspaket konnte nicht vollständig erstellt werden. Bitte erneut versuchen.")
     result["paket"] = paket
     result["hotelName"] = hotel_name
     result["location"] = location
