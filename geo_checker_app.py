@@ -532,6 +532,13 @@ Erstelle auf Basis der tatsaechlichen Website-Inhalte:
 
 WICHTIG: Nur Fakten aus gecrawlten Inhalten verwenden. Keine Erfindungen.
 
+KRITISCH FUER VALIDES JSON - diese Regeln sind absolut:
+- Verwende NIEMALS Anfuehrungszeichen (\", ', oder typografische) innerhalb von Textwerten
+  Falsch: "antwort": "Die Panoramasauna - auch \"finnische Sauna\" genannt - ist..."
+  Richtig: "antwort": "Die Panoramasauna mit finnischem Charakter ist..."
+- Kein echter Zeilenumbruch innerhalb eines JSON-Stringwertes - schreibe alles in einer Zeile
+- Keine Sonderzeichen die JSON brechen koennen
+
 Antworte AUSSCHLIESSLICH als reines JSON-Objekt. Kein Markdown, keine Erklaerungen, keine Codeblocks.
 Beginne deine Antwort direkt mit {{ und beende sie mit }}
 
