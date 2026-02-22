@@ -698,10 +698,17 @@ def generate_pdf(r):
         pdf.cell(0, 5, sanitize("-> " + w["impact"]), ln=True)
         pdf.ln(2)
 
-    pdf.ln(6)
+    # Kontakt-Box nur auf gleicher Seite wenn mind. 40mm Platz, sonst direkt anfügen ohne neue Seite
+    pdf.set_auto_page_break(auto=False)
+    remaining = pdf.h - pdf.get_y() - pdf.b_margin
+    if remaining < 40:
+        pdf.set_y(pdf.h - pdf.b_margin - 35)
+    else:
+        pdf.ln(6)
+
+    y_start = pdf.get_y()
     pdf.set_fill_color(26, 35, 50)
     pdf.set_x(15)
-    y_start = pdf.get_y()
     pdf.rect(15, y_start, 180, 28, 'F')
     pdf.set_font("Helvetica", "B", 11)
     pdf.set_text_color(201, 168, 76)
