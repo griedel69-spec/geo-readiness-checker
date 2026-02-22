@@ -499,7 +499,7 @@ Beginne deine Antwort direkt mit {{ und beende sie mit }}
 
     with st.spinner("📊 Analysiere Website-Inhalte..."):
         msg1 = client.messages.create(
-            model="claude-opus-4-5",
+            model="claude-opus-4-5-20251101",
             max_tokens=1500,
             messages=[{"role": "user", "content": analyse_prompt}]
         )
@@ -557,7 +557,7 @@ Beginne deine Antwort direkt mit {{ und beende sie mit }}
 
     with st.spinner("📦 Erstelle Optimierungspaket..."):
         msg2 = client.messages.create(
-            model="claude-opus-4-5",
+            model="claude-opus-4-5-20251101",
             max_tokens=3000,
             messages=[{"role": "user", "content": paket_prompt}]
         )
