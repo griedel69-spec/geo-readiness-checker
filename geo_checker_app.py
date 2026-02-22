@@ -403,10 +403,10 @@ def run_analysis(hotel_name, location, url, business_type):
     <hr style="border-color:#444;margin:16px 0;">
     <h4 style="color:#f39c12;">📋 Was das für den Betrieb bedeutet:</h4>
     <ul style="color:#ecf0f1;font-size:14px;line-height:1.8;">
-        <li>KI-Suchmaschinen (ChatGPT, Gemini, Perplexity) können diese Website <strong>ebenfalls nicht lesen</strong></li>
-        <li>Google kann Inhalte möglicherweise nicht vollständig indexieren</li>
-        <li>Der Betrieb ist in KI-Antworten faktisch <strong>unsichtbar</strong></li>
-        <li>Dies ist ein ernstes technisches Problem — unabhängig von der Content-Qualität</li>
+        <li>Aktuelle Website-Inhalte (Angebote, FAQs, USPs) können von automatischen Crawlern <strong>nicht gelesen werden</strong></li>
+        <li>KI-Systeme können keine aktuellen Inhalte dieser Website direkt abrufen — sie sind auf veraltete oder externe Daten angewiesen</li>
+        <li>Suchmaschinen-Crawler (inkl. Google) erhalten möglicherweise <strong>keinen Zugriff</strong> auf aktuelle Seiteninhalte</li>
+        <li>Dies ist ein technisches Problem das unabhängig von der inhaltlichen Qualität der Website besteht</li>
     </ul>
     <hr style="border-color:#444;margin:16px 0;">
     <h4 style="color:#27ae60;">💡 Deine Chance als KI-Trainer:</h4>
@@ -419,10 +419,10 @@ def run_analysis(hotel_name, location, url, business_type):
         <strong style="color:#27ae60;">Empfohlener Kontakttext:</strong><br>
         <em style="color:#bdc3c7;font-size:13px;">
         "Guten Tag, bei einer technischen Überprüfung Ihrer Website haben wir festgestellt, 
-        dass {hotel_name} für KI-Suchmaschinen wie ChatGPT und Perplexity derzeit nicht sichtbar ist — 
-        Ihr Server blockiert automatische Zugriffe. Das bedeutet: Wer in einer KI nach Unterkünften 
-        in {location} sucht, findet Sie nicht. Gerne zeige ich Ihnen in einem kurzen Gespräch, 
-        wie das behoben werden kann."
+        dass der Server von {hotel_name} automatische Zugriffe blockiert. 
+        Das bedeutet: Aktuelle Inhalte Ihrer Website — Angebote, FAQs, Alleinstellungsmerkmale — 
+        können von Suchmaschinen-Crawlern nicht zuverlässig gelesen werden. 
+        Gerne zeige ich Ihnen in einem kurzen Gespräch, was das konkret bedeutet und wie das behoben werden kann."
         </em>
     </div>
 </div>
