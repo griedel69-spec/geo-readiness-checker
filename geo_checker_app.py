@@ -344,7 +344,17 @@ def crawl_website(base_url):
         if t:
             pages_content[page_name] = {"text": t, "headings": h}
 
-    return pages_content
+    # Crawl-Status bestimmen
+    crawl_success = len(pages_content) > 0
+    main_page_ok = "Startseite" in pages_content and len(pages_content.get("Startseite", {}).get("text", "")) > 200
+
+    crawl_status = {
+        "success": crawl_success,
+        "main_page_ok": main_page_ok,
+        "pages_found": list(pages_content.keys()),
+        "blocked": not crawl_success or not main_page_ok
+    }
+    return pages_content, crawl_status
 
 
 def format_crawl_for_prompt(pages_content):
@@ -376,11 +386,23 @@ def run_analysis(hotel_name, location, url, business_type):
 
     # Echtes Multi-Page Crawling
     with st.spinner("\U0001f50d Website wird gecrawlt... (Startseite + relevante Unterseiten)"):
-        pages_content = crawl_website(url)
+        pages_content, crawl_status = crawl_website(url)
         website_content = format_crawl_for_prompt(pages_content)
         pages_found = list(pages_content.keys())
 
-    crawl_info = f"Gecrawlte Seiten ({len(pages_found)}): {', '.join(pages_found)}"
+    # Warnung bei blockierter Website
+    if crawl_status["blocked"]:
+        st.warning(
+            "⚠️ **Website konnte nicht vollständig gecrawlt werden** — "
+            "der Server blockiert automatische Zugriffe (Bot-Schutz aktiv). "
+            "Die Analyse basiert auf eingeschränkten oder keinen Website-Daten. "
+            "**NAP-Konsistenz und inhaltliche Faktoren können nicht zuverlässig bewertet werden.** "
+            "Für ein genaues Ergebnis bitte die Website-URL direkt im Browser prüfen."
+        )
+
+    crawl_info = f"Gecrawlte Seiten ({len(pages_found)}): {', '.join(pages_found) if pages_found else 'KEINE — Website blockiert Crawler'}"
+    crawl_hinweis = "WICHTIG: Diese Website blockiert automatische Crawler (503/Bot-Schutz). Es konnten keine Website-Inhalte geladen werden. Bewerte NAP-Konsistenz und alle inhaltsbasierten Faktoren mit 0-2 Punkten und erklaere dass keine Daten verfuegbar sind. Mache KEINE Annahmen ueber den Inhalt der Website." if crawl_status["blocked"] else ""
+
 
     prompt = f"""Du bist ein Experte fuer GEO-Optimierung (Generative Engine Optimization) fuer Tourismus-Websites im DACH-Raum.
 
@@ -393,6 +415,7 @@ Ort: {location}
 Website: {url}
 Typ: {business_type}
 {crawl_info}
+{crawl_hinweis}
 
 === GECRAWLTE WEBSITE-INHALTE ===
 {website_content}
