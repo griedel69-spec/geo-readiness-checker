@@ -344,15 +344,30 @@ def crawl_website(base_url):
         if t:
             pages_content[page_name] = {"text": t, "headings": h}
 
-    # Crawl-Status bestimmen
-    crawl_success = len(pages_content) > 0
+    # Crawl-Status bestimmen — 3 Stufen
+    total_text = " ".join(d.get("text","") for d in pages_content.values())
     main_page_ok = "Startseite" in pages_content and len(pages_content.get("Startseite", {}).get("text", "")) > 200
+    subpages_ok = len(pages_content) > 1
+    total_chars = len(total_text)
+
+    # Stufe 1: Bot-Blocker — keine Daten
+    if not main_page_ok:
+        stufe = 1
+    # Stufe 2: Nur Startseite oder sehr wenig Daten
+    elif not subpages_ok or total_chars < 800:
+        stufe = 2
+    # Stufe 3: Vollständige Daten
+    else:
+        stufe = 3
 
     crawl_status = {
-        "success": crawl_success,
+        "stufe": stufe,
+        "blocked": stufe == 1,
+        "partial": stufe == 2,
+        "complete": stufe == 3,
         "main_page_ok": main_page_ok,
         "pages_found": list(pages_content.keys()),
-        "blocked": not crawl_success or not main_page_ok
+        "total_chars": total_chars,
     }
     return pages_content, crawl_status
 
@@ -428,6 +443,15 @@ def run_analysis(hotel_name, location, url, business_type):
 </div>
 """, unsafe_allow_html=True)
         return None
+
+    # STUFE 2: Teilweise Daten — Warnung anzeigen, eingeschränkten Report liefern
+    if crawl_status["partial"]:
+        st.warning(
+            f"⚠️ **Eingeschränkte Datenbasis** — Nur {len(pages_found)} Seite(n) konnten geladen werden "
+            f"({', '.join(pages_found)}). Faktoren die Unterseiten-Daten benötigen (FAQ, lokale Keywords) "
+            f"können möglicherweise nicht vollständig bewertet werden. "
+            f"Der Report wird mit entsprechenden Einschränkungshinweisen geliefert."
+        )
 
     crawl_info = f"Gecrawlte Seiten ({len(pages_found)}): {', '.join(pages_found) if pages_found else 'KEINE'}"
     crawl_hinweis = ""
@@ -582,8 +606,22 @@ Antworte NUR als valides JSON ohne Markdown:
     has_headings = "UEBERSCHRIFTEN:" in website_content
     has_nap_data = any(kw in website_content for kw in ["Tel", "Telefon", "+43", "+49", "+41", "Adresse", "Straße", "Gasse", "Platz", "Weg ", "Str.", "@"])
 
+    # Crawl-Stufe für Prompt aufbereiten
+    crawl_stufe = crawl_status.get("stufe", 3)
+    if crawl_stufe == 2:
+        stufen_hinweis = (
+            "CRAWL-QUALITAET: STUFE 2 — NUR TEILWEISE DATEN VERFUEGBAR.\n"
+            f"Nur folgende Seiten konnten geladen werden: {', '.join(pages_found)}.\n"
+            "Faktoren die Unterseiten benoetigen (FAQ, lokale Keywords) koennen eingeschraenkt sein.\n"
+            "Kennzeichne jeden Faktor der moeglicherweise unvollstaendig ist mit: "
+            "'(Hinweis: Nur Teilseiten gecrawlt — Bewertung moeglicherweise unvollstaendig.)'"
+        )
+    else:
+        stufen_hinweis = f"CRAWL-QUALITAET: STUFE 3 — Vollstaendige Daten ({len(pages_found)} Seiten gecrawlt)."
+
     datenverfuegbarkeit = f"""
 DATENVERFUEGBARKEIT (PFLICHTHINWEIS):
+{stufen_hinweis}
 - Website-Inhalte geladen: {"JA" if has_content else "NEIN — keine Daten verfuegbar"}
 - FAQ-Daten vorhanden: {"JA" if has_faq else "NEIN"}
 - Ueberschriften-Daten vorhanden: {"JA" if has_headings else "NEIN"}
@@ -592,10 +630,10 @@ DATENVERFUEGBARKEIT (PFLICHTHINWEIS):
 ABSOLUTE PFLICHTREGELN — KEINE AUSNAHMEN:
 1. Wenn fuer einen Faktor KEINE DATEN vorhanden sind: Score = 0, Kommentar = "Keine Website-Daten verfuegbar — Bewertung nicht moeglich."
 2. NIEMALS Annahmen treffen oder aus deinem Trainingswissen ergaenzen.
-3. NIEMALS behaupten etwas "fehlt" wenn du es schlicht nicht gesehen hast.
-4. Nur bewerten was EXPLIZIT in den gecrawlten Inhalten steht.
-5. Bei NAP: Nur als vorhanden bewerten wenn Adresse UND Telefon im gecrawlten Text sichtbar sind.
-6. Quick Wins NUR fuer Faktoren erstellen die tatsaechlich bewertet wurden (Score > 0). Fuer Faktoren ohne Datenbasis (Score = 0) KEINE Quick Wins — es waere eine Empfehlung ohne Grundlage.
+3. NIEMALS behaupten etwas "fehlt" wenn du es schlicht nicht gesehen hast — nur bewerten was EXPLIZIT in den gecrawlten Inhalten steht.
+4. Bei NAP: Nur als vorhanden bewerten wenn Adresse UND Telefon im gecrawlten Text sichtbar sind.
+5. Quick Wins NUR fuer Faktoren erstellen die tatsaechlich bewertet wurden (Score > 0). Fuer Faktoren ohne Datenbasis KEINE Quick Wins.
+6. Bei Stufe 2 (Teilseiten): Jeden betroffenen Faktor-Kommentar mit Einschraenkungshinweis versehen.
 """
 
     analyse_prompt = f"""Du bist GEO-Optimierungs-Experte fuer Tourismus-Websites im DACH-Raum.
@@ -634,7 +672,8 @@ Antworte NUR als JSON:
     // Mindestens 1, maximal 5 Quick Wins — nur basierend auf tatsaechlich gecrawlten Inhalten.
     {{"prioritaet": "sofort|kurz|mittel", "massnahme": "<nur wenn Datenbasis vorhanden>", "impact": "<messbarer Effekt>", "basierend_auf": "<welcher Faktor>"}}
   ],
-  "zusammenfassung": "<2-3 Saetze ehrliche Gesamtbewertung — explizit erwaehnen wenn Daten fehlten>"
+  "zusammenfassung": "<2-3 Saetze ehrliche Gesamtbewertung. Bei Stufe 2: explizit erwaehnen welche Faktoren aufgrund eingeschraenkter Datenbasis nicht vollstaendig bewertet werden konnten.>",
+  "datenbasis": "<'vollstaendig' | 'eingeschraenkt — nur Teilseiten' | 'keine Daten'>"
 }}"""
 
     with st.spinner("📊 Analysiere Website-Inhalte..."):
