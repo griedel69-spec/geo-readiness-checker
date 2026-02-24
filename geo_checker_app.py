@@ -372,6 +372,107 @@ def crawl_website(base_url):
     return pages_content, crawl_status
 
 
+def extract_nap(pages_content):
+    """
+    Extrahiert NAP-Daten (Name, Adresse, Telefon) aus gecrawlten Seiteninhalten.
+    Gibt nur zurueck was tatsaechlich im Text gefunden wurde — keine Annahmen.
+    """
+    import re
+
+    # Alle gecrawlten Texte zusammenfuehren — Kontaktseite bevorzugen
+    ordered_texts = []
+    for prio_name in ["kontakt", "contact", "impressum", "startseite"]:
+        for page_name, data in pages_content.items():
+            if prio_name in page_name.lower():
+                ordered_texts.append(data.get("text", ""))
+    for page_name, data in pages_content.items():
+        ordered_texts.append(data.get("text", ""))
+    full_text = " ".join(ordered_texts)
+
+    nap = {
+        "telefon": None,
+        "email": None,
+        "adresse": None,
+        "crawl_seiten": list(pages_content.keys()),
+    }
+
+    # Telefon: AT/DE/CH Formate
+    tel_match = re.search(
+        r'(\+43[\s\-./\d]{6,16}|\+49[\s\-./\d]{6,16}|\+41[\s\-./\d]{6,16}|0\d{3,5}[\s\-./\d]{4,12})',
+        full_text
+    )
+    if tel_match:
+        nap["telefon"] = tel_match.group().strip()
+
+    # E-Mail
+    mail_match = re.search(r'[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,6}', full_text)
+    if mail_match:
+        nap["email"] = mail_match.group().strip()
+
+    # Adresse: Strasse/Gasse/Weg/Platz + Hausnummer + PLZ + Ort (DACH)
+    adresse_match = re.search(
+        r'[A-Za-z\u00c0-\u017e]+'
+        r'(?:stra\u00dfe|gasse|weg|platz|allee|ring|promenade|str\.|g\.)'
+        r'\s*\d{1,4}[a-zA-Z]?,?\s*\d{4,5}\s+[A-Za-z\u00c0-\u017e][\w\u00c0-\u017e\-]*',
+        full_text, re.IGNORECASE
+    )
+    if adresse_match:
+        nap["adresse"] = adresse_match.group().strip()
+
+    return nap
+
+
+def extract_faq(pages_content):
+    """
+    Extrahiert FAQ-Fragen aus gecrawlten Seiteninhalten.
+    Gibt nur zurueck was tatsaechlich im Text/HTML gefunden wurde.
+    """
+    import re
+
+    faq_items = []
+    faq_source = None
+
+    for page_name, data in pages_content.items():
+        text = data.get("text", "")
+        headings = data.get("headings", [])
+        is_faq_page = "faq" in page_name.lower()
+
+        # 1) Fragen aus Headings (H2/H3 mit Fragezeichen)
+        for h in headings:
+            clean = re.sub(r'\[H\d\]\s*|\[SPAN\]\s*', '', h).strip()
+            if clean.endswith("?") and 15 <= len(clean) <= 200:
+                if clean not in faq_items:
+                    faq_items.append(clean)
+                    if not faq_source:
+                        faq_source = page_name
+
+        # 2) Auf dedizierter FAQ-Seite: Saetze mit ? aus Fliestext
+        if is_faq_page and text:
+            sentences = re.split(r'(?<=[.!])\s+', text)
+            for s in sentences:
+                s_clean = s.strip()
+                if s_clean.endswith("?") and 20 <= len(s_clean) <= 200:
+                    if s_clean not in faq_items:
+                        faq_items.append(s_clean)
+                        if not faq_source:
+                            faq_source = page_name
+
+    # Max 20, dedupliziert
+    seen = set()
+    result_list = []
+    for q in faq_items:
+        if q not in seen:
+            seen.add(q)
+            result_list.append(q)
+    result_list = result_list[:20]
+
+    return {
+        "fragen": result_list,
+        "anzahl": len(result_list),
+        "quelle": faq_source,
+        "faq_seite_gecrawlt": any("faq" in p.lower() for p in pages_content.keys()),
+    }
+
 def format_crawl_for_prompt(pages_content):
     """Formatiert gecrawlte Seiten fuer den Claude-Prompt."""
     if not pages_content:
@@ -739,6 +840,12 @@ Antworte NUR als JSON:
     result["type"] = business_type
     result["email"] = ""
     result["date"] = __import__("datetime").date.today().strftime("%d.%m.%Y")
+
+    # ── NAP & FAQ strukturiert extrahieren und speichern ──
+    nap_data = extract_nap(pages_content)
+    faq_data = extract_faq(pages_content)
+    result["nap"] = nap_data
+    result["faq"] = faq_data
     return result
 
 # ─── PDF GENERATOR ───
@@ -1003,6 +1110,74 @@ if st.session_state.result:
             <span style="color:#3d7a5e;font-size:13px;">→ {w['impact']}</span>
         </div>
         """, unsafe_allow_html=True)
+
+    # ── NAP & FAQ Reporting ──
+    st.markdown("### 🔍 NAP & FAQ Detailcheck")
+
+    nap = r.get("nap", {})
+    faq = r.get("faq", {})
+
+    col_nap, col_faq = st.columns(2)
+
+    with col_nap:
+        st.markdown("#### 📍 NAP-Daten (Name · Adresse · Telefon)")
+        crawl_seiten = nap.get("crawl_seiten", [])
+        if crawl_seiten:
+            st.caption(f"Gecrawlte Seiten: {', '.join(crawl_seiten)}")
+        else:
+            st.caption("Keine Seiten gecrawlt.")
+
+        telefon = nap.get("telefon")
+        email = nap.get("email")
+        adresse = nap.get("adresse")
+
+        if telefon:
+            st.success(f"✅ **Telefon gefunden:** {telefon}")
+        else:
+            st.error("❌ **Telefon:** Nicht im gecrawlten Text gefunden.")
+            st.caption("Mögliche Ursachen: Nur in Bild/Grafik vorhanden, JavaScript-gerendert, oder tatsächlich fehlend.")
+
+        if email:
+            st.success(f"✅ **E-Mail gefunden:** {email}")
+        else:
+            st.warning("⚠️ **E-Mail:** Nicht im gecrawlten Text gefunden.")
+            st.caption("Mögliche Ursachen: Verschleiert gegen Spam, JavaScript-gerendert, oder fehlend.")
+
+        if adresse:
+            st.success(f"✅ **Adresse gefunden:** {adresse}")
+        else:
+            st.error("❌ **Adresse:** Nicht im gecrawlten Text gefunden.")
+            st.caption("Mögliche Ursachen: Nur auf Kontaktseite (nicht gecrawlt), in Karte/Bild, oder JavaScript-gerendert.")
+
+        if not telefon and not adresse:
+            st.info("ℹ️ **Auswirkung:** Ohne lesbare NAP-Daten können lokale KI-Suchsysteme und Suchmaschinen-Crawler Betriebsinfos nicht direkt von der Website übernehmen. Externe Quellen (Google Business, Booking.com) werden dann bevorzugt — mit dem Risiko veralteter Daten.")
+
+    with col_faq:
+        st.markdown("#### ❓ FAQ-Analyse")
+        faq_gecrawlt = faq.get("faq_seite_gecrawlt", False)
+        faq_anzahl = faq.get("anzahl", 0)
+        faq_quelle = faq.get("quelle")
+        faq_fragen = faq.get("fragen", [])
+
+        if faq_gecrawlt:
+            st.caption(f"FAQ-Seite wurde gecrawlt. Quelle: {faq_quelle or 'unbekannt'}")
+        else:
+            st.caption("Keine dedizierte FAQ-Seite gefunden oder gecrawlt.")
+
+        if faq_anzahl > 0:
+            st.success(f"✅ **{faq_anzahl} FAQ-Fragen gefunden** (Quelle: {faq_quelle})")
+            with st.expander("Gefundene Fragen anzeigen"):
+                for i, frage in enumerate(faq_fragen, 1):
+                    st.write(f"{i}. {frage}")
+        else:
+            st.error("❌ **Keine FAQ-Fragen gefunden.**")
+            if faq_gecrawlt:
+                st.caption("FAQ-Seite gecrawlt, aber keine strukturierten Fragen erkannt. Mögliche Ursache: FAQ komplett JavaScript-gerendert (nicht im HTML-Quelltext).")
+            else:
+                st.caption("Keine FAQ-Seite gefunden. Mögliche Ursache: FAQ-URL nicht in Sitemap oder Startseiten-Links enthalten.")
+            st.info("ℹ️ **Auswirkung:** Fehlende FAQs reduzieren die Wahrscheinlichkeit, in KI-generierten Antworten (z.B. ChatGPT, Perplexity) mit konkreten Informationen zu erscheinen.")
+
+    st.markdown("---")
 
     # PDF Download
     st.markdown("### 📄 Report herunterladen")
