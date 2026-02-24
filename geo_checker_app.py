@@ -241,7 +241,7 @@ def crawl_website(base_url):
                 if faq_spans:
                     text = text + "\n\nFAQ-FRAGEN AUF DIESER SEITE:\n" + "\n".join(f"- {q}" for q in faq_spans[:30])
 
-                return text[:4000], parser.headings[:20], parser.links
+                return text[:8000], parser.headings[:30], parser.links
         except Exception:
             pass
         return None, [], []
@@ -304,7 +304,7 @@ def crawl_website(base_url):
                 faq_candidates.append(full_url)
 
     # FAQ crawlen
-    for faq_url in faq_candidates[:2]:
+    for faq_url in faq_candidates[:3]:
         t, h, _ = fetch_page(faq_url)
         if t:
             pages_content["FAQ-Seite"] = {"text": t, "headings": h}
@@ -338,7 +338,7 @@ def crawl_website(base_url):
 
     priority_urls.sort(reverse=True)
 
-    for _, sub_url, sub_path in priority_urls[:5]:
+    for _, sub_url, sub_path in priority_urls[:10]:
         page_name = sub_path.strip("/").split("/")[-1][:40]
         t, h, _ = fetch_page(sub_url)
         if t:
@@ -744,7 +744,7 @@ Betrieb: {hotel_name} | Ort: {location} | Typ: {business_type}
 {datenverfuegbarkeit}
 
 GECRAWLTE INHALTE:
-{website_content[:8000]}
+{website_content[:15000]}
 
 Bewerte diese 5 Faktoren (0-10) basierend auf den gecrawlten Inhalten:
 1. FAQ-Sektion: Strukturierte Fragen & Antworten vorhanden?
@@ -768,10 +768,8 @@ Antworte NUR als JSON:
     {{"name": "USP-Klarheit", "score": <0-10>, "kommentar": "<1 praegnanter Satz>"}}
   ],
   "quickwins": [
-    // NUR fuer Faktoren mit Score > 0 und vorhandenen Daten Quick Wins erstellen.
-    // Fuer jeden Faktor mit Score = 0 (keine Daten) KEINEN Quick Win erstellen.
-    // Mindestens 1, maximal 5 Quick Wins — nur basierend auf tatsaechlich gecrawlten Inhalten.
-    {{"prioritaet": "sofort|kurz|mittel", "massnahme": "<nur wenn Datenbasis vorhanden>", "impact": "<messbarer Effekt>", "basierend_auf": "<welcher Faktor>"}}
+    {{"prioritaet": "sofort", "massnahme": "<Massnahme nur fuer Faktoren mit Score>0>", "impact": "<messbarer Effekt>"}},
+    {{"prioritaet": "kurz", "massnahme": "<Massnahme nur fuer Faktoren mit Score>0>", "impact": "<messbarer Effekt>"}}
   ],
   "zusammenfassung": "<2-3 Saetze ehrliche Gesamtbewertung. Bei Stufe 2: explizit erwaehnen welche Faktoren aufgrund eingeschraenkter Datenbasis nicht vollstaendig bewertet werden konnten.>",
   "datenbasis": "<'vollstaendig' | 'eingeschraenkt — nur Teilseiten' | 'keine Daten'>"
@@ -780,7 +778,7 @@ Antworte NUR als JSON:
     with st.spinner("📊 Analysiere Website-Inhalte..."):
         msg1 = client.messages.create(
             model="claude-opus-4-5",
-            max_tokens=1500,
+            max_tokens=2000,
             messages=[{"role": "user", "content": analyse_prompt}]
         )
     result = safe_json_parse(msg1.content[0].text)
@@ -791,7 +789,7 @@ Antworte NUR als JSON:
 Betrieb: {hotel_name} | Ort: {location} | Typ: {business_type}
 
 WEBSITE-INHALTE (gecrawlt):
-{website_content[:6000]}
+{website_content[:12000]}
 
 Erstelle auf Basis der tatsaechlichen Website-Inhalte:
 - FAQ: 10 Fragen+Antworten, KI-optimiert, zum Betrieb passend
