@@ -313,36 +313,81 @@ def crawl_website(base_url):
 
     # --- SCHRITT 4: Weitere relevante Unterseiten (aus Sitemap bevorzugt) ---
     seen_urls = {base_url} | set(faq_candidates)
-    priority_urls = []
-
-    # Irrelevante Seiten ausschliessen
     exclude_patterns = ["datenschutz", "cookie", "impressum", "agb", "privacy",
-                       "sitemap", "robots", ".xml", ".pdf", "login", "admin"]
-    url_pool = sitemap_urls if sitemap_urls else [urljoin(base_url, l) for l in links]
+                        "sitemap", "robots", ".xml", ".pdf", "login", "admin",
+                        "wp-admin", "wp-login", "feed", "rss", "#", "javascript:"]
 
-    for u in url_pool:
+    def is_valid_internal_url(u):
         u_clean = u.rstrip("/")
         if u_clean in seen_urls:
-            continue
-        parsed = urlparse(u_clean)
+            return False
+        try:
+            parsed = urlparse(u_clean)
+        except Exception:
+            return False
         if base_domain not in parsed.netloc:
-            continue
+            return False
         path_lower = parsed.path.lower()
         if any(ex in path_lower for ex in exclude_patterns):
-            continue
+            return False
+        return True
+
+    def score_url(path_lower):
+        """Prioritaet: content_patterns = 4, alles andere = 1"""
         for pattern in content_patterns:
             if pattern in path_lower:
-                priority_urls.append((4, u_clean, path_lower))
-                seen_urls.add(u_clean)
-                break
+                return 4
+        return 1
+
+    # ── URL-Pool aufbauen: Sitemap ODER Links aus Startseite ──
+    if sitemap_urls:
+        url_pool = sitemap_urls
+    else:
+        # Fallback: alle internen Links aus Startseite
+        url_pool = []
+        for link in links:
+            full = urljoin(base_url, link).rstrip("/")
+            if full.startswith("http") and base_domain in full:
+                url_pool.append(full)
+
+    # ── Alle validen URLs mit Prioritaet sammeln ──
+    priority_urls = []
+    for u in url_pool:
+        u_clean = u.rstrip("/")
+        if not is_valid_internal_url(u_clean):
+            continue
+        path_lower = urlparse(u_clean).path.lower()
+        priority_urls.append((score_url(path_lower), u_clean, path_lower))
+        seen_urls.add(u_clean)
 
     priority_urls.sort(reverse=True)
 
+    # ── Crawlen: bis zu 10 Seiten ──
+    crawled_links_pool = []
     for _, sub_url, sub_path in priority_urls[:10]:
-        page_name = sub_path.strip("/").split("/")[-1][:40]
-        t, h, _ = fetch_page(sub_url)
+        page_name = sub_path.strip("/").split("/")[-1][:40] or sub_path.strip("/")[:40]
+        t, h, sub_links = fetch_page(sub_url)
         if t:
             pages_content[page_name] = {"text": t, "headings": h}
+            # Links aus gecrawlten Seiten fuer 2. Ebene sammeln (nur wenn keine Sitemap)
+            if not sitemap_urls:
+                crawled_links_pool.extend(sub_links)
+
+    # ── Ebene 2: Links aus gecrawlten Seiten (nur wenn Sitemap fehlt + noch Platz) ──
+    if not sitemap_urls and len(pages_content) < 8:
+        level2_urls = []
+        for link in crawled_links_pool:
+            full = urljoin(base_url, link).rstrip("/")
+            if full.startswith("http") and base_domain in full and is_valid_internal_url(full):
+                path_lower = urlparse(full).path.lower()
+                level2_urls.append((score_url(path_lower), full, path_lower))
+                seen_urls.add(full)
+        level2_urls.sort(reverse=True)
+        for _, sub_url, sub_path in level2_urls[:5]:
+            page_name = sub_path.strip("/").split("/")[-1][:40] or sub_path.strip("/")[:40]
+            t, h, _ = fetch_page(sub_url)
+            if t:
+                pages_content[page_name] = {"text": t, "headings": h}
 
     # Crawl-Status bestimmen — 3 Stufen
     total_text = " ".join(d.get("text","") for d in pages_content.values())
@@ -653,6 +698,26 @@ Antworte NUR als valides JSON ohne Markdown:
 
     client = anthropic.Anthropic(api_key=api_key)
 
+    def call_api_with_retry(model, max_tokens, messages, spinner_text=""):
+        """API-Call mit bis zu 3 Retries bei OverloadedError."""
+        import time
+        for attempt in range(3):
+            try:
+                return client.messages.create(
+                    model=model,
+                    max_tokens=max_tokens,
+                    messages=messages
+                )
+            except Exception as e:
+                err_str = str(type(e).__name__)
+                if "Overloaded" in err_str and attempt < 2:
+                    wait = 15 * (attempt + 1)
+                    st.warning(f"⏳ API momentan ausgelastet — warte {wait} Sekunden und versuche erneut... (Versuch {attempt+2}/3)")
+                    time.sleep(wait)
+                else:
+                    raise
+        raise RuntimeError("API nach 3 Versuchen nicht erreichbar.")
+
     def safe_json_parse(raw):
         """Robuste JSON-Extraktion aus Claude-Antwort mit mehreren Fallbacks."""
         import re
@@ -776,7 +841,7 @@ Antworte NUR als JSON:
 }}"""
 
     with st.spinner("📊 Analysiere Website-Inhalte..."):
-        msg1 = client.messages.create(
+        msg1 = call_api_with_retry(
             model="claude-opus-4-5",
             max_tokens=2000,
             messages=[{"role": "user", "content": analyse_prompt}]
@@ -820,7 +885,7 @@ Antworte NUR als JSON:
 }}"""
 
     with st.spinner("📦 Erstelle Optimierungspaket..."):
-        msg2 = client.messages.create(
+        msg2 = call_api_with_retry(
             model="claude-opus-4-5",
             max_tokens=3000,
             messages=[{"role": "user", "content": paket_prompt}]
