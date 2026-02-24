@@ -4,6 +4,11 @@ import json
 import csv
 import io
 import datetime
+import re
+import time
+import requests
+from html.parser import HTMLParser
+from urllib.parse import urljoin, urlparse
 from fpdf import FPDF
 
 # ─── PAGE CONFIG ───
@@ -14,124 +19,30 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# ─── CUSTOM CSS ───
+# ─── CSS ───
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&display=swap');
-
-html, body, [class*="css"] {
-    font-family: 'DM Sans', sans-serif;
-}
-
-.main-header {
-    background: linear-gradient(135deg, #1a2332 0%, #2d4a3e 100%);
-    padding: 36px 32px 28px;
-    border-radius: 8px;
-    margin-bottom: 28px;
-    position: relative;
-}
-
-.main-header h1 {
-    color: #ffffff;
-    font-size: 32px;
-    font-weight: 700;
-    margin: 0 0 8px 0;
-    line-height: 1.2;
-}
-
+html, body, [class*="css"] { font-family: 'DM Sans', sans-serif; }
+.main-header { background: linear-gradient(135deg, #1a2332 0%, #2d4a3e 100%); padding: 36px 32px 28px; border-radius: 8px; margin-bottom: 28px; }
+.main-header h1 { color: #ffffff; font-size: 32px; font-weight: 700; margin: 0 0 8px 0; }
 .main-header h1 span { color: #c9a84c; }
-
-.main-header p {
-    color: rgba(255,255,255,0.7);
-    font-size: 15px;
-    margin: 0;
-    line-height: 1.6;
-}
-
-.brand-tag {
-    display: inline-block;
-    background: rgba(201,168,76,0.2);
-    border: 1px solid rgba(201,168,76,0.4);
-    color: #e8c97a;
-    padding: 4px 12px;
-    border-radius: 2px;
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    margin-bottom: 16px;
-}
-
-.score-box {
-    background: linear-gradient(135deg, #1a2332, #2d4a3e);
-    border-radius: 8px;
-    padding: 24px;
-    text-align: center;
-    color: white;
-}
-
-.score-number {
-    font-size: 56px;
-    font-weight: 800;
-    line-height: 1;
-}
-
+.main-header p { color: rgba(255,255,255,0.7); font-size: 15px; margin: 0; line-height: 1.6; }
+.brand-tag { display: inline-block; background: rgba(201,168,76,0.2); border: 1px solid rgba(201,168,76,0.4); color: #e8c97a; padding: 4px 12px; border-radius: 2px; font-size: 11px; font-weight: 600; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 16px; }
+.score-box { background: linear-gradient(135deg, #1a2332, #2d4a3e); border-radius: 8px; padding: 24px; text-align: center; color: white; }
+.score-number { font-size: 56px; font-weight: 800; line-height: 1; }
 .score-excellent { color: #7ab89a; }
 .score-good { color: #c9a84c; }
 .score-poor { color: #e67e22; }
 .score-critical { color: #c0392b; }
-
-.factor-card {
-    background: #f8f6f2;
-    border-left: 4px solid #3d7a5e;
-    padding: 16px 20px;
-    border-radius: 0 6px 6px 0;
-    margin-bottom: 12px;
-}
-
 .win-sofort { background: #fde8e8; border-left: 4px solid #c0392b; padding: 12px 16px; border-radius: 0 6px 6px 0; margin-bottom: 8px; }
 .win-kurz   { background: #fef3e2; border-left: 4px solid #e67e22; padding: 12px 16px; border-radius: 0 6px 6px 0; margin-bottom: 8px; }
 .win-mittel { background: #eaf5f0; border-left: 4px solid #27ae60; padding: 12px 16px; border-radius: 0 6px 6px 0; margin-bottom: 8px; }
-
-.cta-box {
-    background: linear-gradient(135deg, #1a2332 0%, #2d4a3e 100%);
-    border-radius: 8px;
-    padding: 28px 32px;
-    color: white;
-    margin-top: 24px;
-}
-
-.footer-bar {
-    background: #1a2332;
-    color: rgba(255,255,255,0.5);
-    padding: 16px 24px;
-    border-radius: 8px;
-    text-align: center;
-    font-size: 12px;
-    margin-top: 40px;
-}
-
-div[data-testid="stForm"] {
-    background: white;
-    padding: 24px;
-    border-radius: 8px;
-    border: 1px solid #e8e3da;
-}
-
-.stButton > button {
-    background: #3d7a5e !important;
-    color: white !important;
-    font-weight: 700 !important;
-    font-size: 16px !important;
-    padding: 14px 28px !important;
-    border-radius: 4px !important;
-    border: none !important;
-    width: 100% !important;
-}
-
-.stButton > button:hover {
-    background: #2d4a3e !important;
-}
+.cta-box { background: linear-gradient(135deg, #1a2332 0%, #2d4a3e 100%); border-radius: 8px; padding: 28px 32px; color: white; margin-top: 24px; }
+.footer-bar { background: #1a2332; color: rgba(255,255,255,0.5); padding: 16px 24px; border-radius: 8px; text-align: center; font-size: 12px; margin-top: 40px; }
+div[data-testid="stForm"] { background: white; padding: 24px; border-radius: 8px; border: 1px solid #e8e3da; }
+.stButton > button { background: #3d7a5e !important; color: white !important; font-weight: 700 !important; font-size: 16px !important; padding: 14px 28px !important; border-radius: 4px !important; border: none !important; width: 100% !important; }
+.stButton > button:hover { background: #2d4a3e !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -150,23 +61,16 @@ if "leads" not in st.session_state:
     st.session_state.leads = []
 if "result" not in st.session_state:
     st.session_state.result = None
-if "show_leads" not in st.session_state:
-    st.session_state.show_leads = False
+if "anfrage_gesendet" not in st.session_state:
+    st.session_state.anfrage_gesendet = False
 
-# ─── GET API KEY ───
-def get_api_key():
-    try:
-        return st.secrets["ANTHROPIC_API_KEY"]
-    except:
-        return None
 
-# ─── MULTI-PAGE CRAWLER ───
+# ══════════════════════════════════════════════════════════
+# CRAWLER
+# ══════════════════════════════════════════════════════════
+
 def crawl_website(base_url):
-    """Crawlt die wichtigsten Seiten einer Hotel-Website via Sitemap + direkte FAQ-Suche."""
-    import requests
-    import re
-    from html.parser import HTMLParser
-    from urllib.parse import urljoin, urlparse
+    """Crawlt Hotel-Website: Sitemap → FAQ → Unterseiten (2 Ebenen)."""
 
     class TextExtractor(HTMLParser):
         def __init__(self):
@@ -178,6 +82,7 @@ def crawl_website(base_url):
             self.headings = []
             self.in_heading = False
             self.current_tag = ""
+
         def handle_starttag(self, tag, attrs):
             if tag in self.skip_tags:
                 self.current_skip += 1
@@ -188,11 +93,13 @@ def crawl_website(base_url):
                 for attr, val in attrs:
                     if attr == "href" and val:
                         self.links.append(val)
+
         def handle_endtag(self, tag):
             if tag in self.skip_tags:
                 self.current_skip = max(0, self.current_skip - 1)
             if tag in ("h1", "h2", "h3"):
                 self.in_heading = False
+
         def handle_data(self, data):
             if self.current_skip == 0:
                 text = data.strip()
@@ -200,14 +107,14 @@ def crawl_website(base_url):
                     if self.in_heading:
                         self.headings.append(f"[{self.current_tag.upper()}] {text}")
                     self.text_parts.append(text)
+
         def get_text(self):
             return " ".join(self.text_parts)
 
     if not base_url.startswith("http"):
         base_url = "https://" + base_url
     base_url = base_url.rstrip("/")
-    parsed_base = urlparse(base_url)
-    base_domain = parsed_base.netloc
+    base_domain = urlparse(base_url).netloc
 
     headers = {
         "User-Agent": "Mozilla/5.0 (compatible; GEO-Checker/1.0)",
@@ -215,17 +122,19 @@ def crawl_website(base_url):
         "Accept-Language": "de-AT,de;q=0.9"
     }
 
+    exclude_patterns = [
+        "datenschutz", "cookie", "impressum", "agb", "privacy",
+        "sitemap", "robots", ".xml", ".pdf", "login", "admin",
+        "wp-admin", "wp-login", "feed", "rss", "javascript:"
+    ]
     faq_patterns = ["faq", "haeufig", "faq.html", "faq.php"]
-    # WICHTIG: "fragen" NICHT in faq_patterns - "unverbindlich-anfragen" wuerde sonst faelschlich matchen!
     content_patterns = [
         "zimmer", "rooms", "appartement", "wohnung", "suite",
         "ueber", "about", "uns", "lage", "anreise",
-        "wellness", "spa", "angebot", "preise",
+        "wellness", "spa", "angebot", "preise", "kontakt",
         "aktivitaet", "sommer", "winter", "service",
         "gut-zu-wissen", "buchungsinformation"
     ]
-
-    pages_content = {}
 
     def fetch_page(url):
         try:
@@ -235,702 +144,535 @@ def crawl_website(base_url):
                 parser = TextExtractor()
                 parser.feed(html)
                 text = parser.get_text()
-
-                # Accordion/JS-FAQ Extraktion (Next.js, React, etc.)
+                # JS-FAQ Accordion Extraktion
                 faq_spans = re.findall(r'<span>([^<]{15,200}\?)</span>', html)
                 if faq_spans:
-                    text = text + "\n\nFAQ-FRAGEN AUF DIESER SEITE:\n" + "\n".join(f"- {q}" for q in faq_spans[:30])
-
+                    text += "\n\nFAQ-FRAGEN AUF DIESER SEITE:\n" + "\n".join(f"- {q}" for q in faq_spans[:30])
                 return text[:8000], parser.headings[:30], parser.links
         except Exception:
             pass
         return None, [], []
 
-    def get_urls_from_sitemap(base):
-        """Liest Sitemap und gibt alle URLs der Domain zurueck."""
-        found_urls = []
-        sitemap_candidates = [
-            base + "/sitemap.xml",
-            base + "/sitemap_index.xml",
-            base + "/sitemap.php",
-        ]
-        for sitemap_url in sitemap_candidates:
+    def get_sitemap_urls(base):
+        found = []
+        for candidate in [base + "/sitemap.xml", base + "/sitemap_index.xml", base + "/sitemap.php"]:
             try:
-                r = requests.get(sitemap_url, headers=headers, timeout=8)
+                r = requests.get(candidate, headers=headers, timeout=8)
                 if r.status_code == 200:
                     urls = re.findall(r'<loc>(https?://[^<]+)</loc>', r.text)
                     for u in urls:
-                        if base_domain in u and u not in found_urls:
-                            found_urls.append(u)
-                    if found_urls:
+                        if base_domain in u and u not in found:
+                            found.append(u)
+                    if found:
                         break
             except Exception:
                 pass
-        return found_urls
+        return found
 
-    # --- SCHRITT 1: Startseite ---
-    text, headings, links = fetch_page(base_url)
-    if text:
-        pages_content["Startseite"] = {"text": text, "headings": headings}
-
-    # --- SCHRITT 2: Sitemap lesen (zuverlaessigste Methode) ---
-    sitemap_urls = get_urls_from_sitemap(base_url)
-
-    # --- SCHRITT 3: FAQ-Seiten IMMER zuerst und garantiert crawlen ---
-    faq_crawled = False
-    faq_candidates = []
-
-    # Sprache: Deutsch bevorzugen (DACH-Markt), dann Eingabe-URL, dann alles andere
-    input_path = urlparse(base_url).path.lower()
-
-    # Aus Sitemap - Deutsche Version immer bevorzugt
-    de_faq = []
-    other_faq = []
-    for u in sitemap_urls:
-        path_lower = urlparse(u).path.lower()
-        if any(p in path_lower for p in faq_patterns):
-            if "/de/" in path_lower or path_lower.endswith("/de"):
-                de_faq.append(u)
-            elif "/en/" not in path_lower and "/fr/" not in path_lower:
-                other_faq.append(u)
-    faq_candidates = de_faq + other_faq
-
-    # Aus Links der Startseite (Fallback)
-    for link in links:
-        full_url = urljoin(base_url, link).rstrip("/")
-        path_lower = urlparse(full_url).path.lower()
-        if base_domain in full_url and any(p in path_lower for p in faq_patterns):
-            if full_url not in faq_candidates:
-                faq_candidates.append(full_url)
-
-    # FAQ crawlen
-    for faq_url in faq_candidates[:3]:
-        t, h, _ = fetch_page(faq_url)
-        if t:
-            pages_content["FAQ-Seite"] = {"text": t, "headings": h}
-            faq_crawled = True
-            break
-
-    # --- SCHRITT 4: Weitere relevante Unterseiten (aus Sitemap bevorzugt) ---
-    seen_urls = {base_url} | set(faq_candidates)
-    exclude_patterns = ["datenschutz", "cookie", "impressum", "agb", "privacy",
-                        "sitemap", "robots", ".xml", ".pdf", "login", "admin",
-                        "wp-admin", "wp-login", "feed", "rss", "#", "javascript:"]
-
-    def is_valid_internal_url(u):
-        u_clean = u.rstrip("/")
-        if u_clean in seen_urls:
+    def is_valid_url(u, seen):
+        u = u.rstrip("/")
+        if u in seen:
             return False
         try:
-            parsed = urlparse(u_clean)
+            p = urlparse(u)
         except Exception:
             return False
-        if base_domain not in parsed.netloc:
+        if base_domain not in p.netloc:
             return False
-        path_lower = parsed.path.lower()
-        if any(ex in path_lower for ex in exclude_patterns):
+        path = p.path.lower()
+        if any(ex in path for ex in exclude_patterns):
             return False
         return True
 
-    def score_url(path_lower):
-        """Prioritaet: content_patterns = 4, alles andere = 1"""
-        for pattern in content_patterns:
-            if pattern in path_lower:
+    def url_priority(path):
+        for pat in content_patterns:
+            if pat in path:
                 return 4
         return 1
 
-    # ── URL-Pool aufbauen: Sitemap ODER Links aus Startseite ──
-    if sitemap_urls:
-        url_pool = sitemap_urls
-    else:
-        # Fallback: alle internen Links aus Startseite
-        url_pool = []
-        for link in links:
-            full = urljoin(base_url, link).rstrip("/")
-            if full.startswith("http") and base_domain in full:
-                url_pool.append(full)
+    pages = {}
+    seen = set()
 
-    # ── Alle validen URLs mit Prioritaet sammeln ──
-    priority_urls = []
+    # 1. Startseite
+    text, headings, links = fetch_page(base_url)
+    if text:
+        pages["Startseite"] = {"text": text, "headings": headings}
+    seen.add(base_url)
+
+    # 2. Sitemap
+    sitemap_urls = get_sitemap_urls(base_url)
+
+    # 3. FAQ-Seiten bevorzugt crawlen
+    de_faq, other_faq = [], []
+    for u in sitemap_urls:
+        path = urlparse(u).path.lower()
+        if any(p in path for p in faq_patterns):
+            if "/de/" in path:
+                de_faq.append(u)
+            elif "/en/" not in path and "/fr/" not in path:
+                other_faq.append(u)
+    for link in links:
+        full = urljoin(base_url, link).rstrip("/")
+        path = urlparse(full).path.lower()
+        if base_domain in full and any(p in path for p in faq_patterns):
+            if full not in de_faq and full not in other_faq:
+                other_faq.append(full)
+
+    for faq_url in (de_faq + other_faq)[:3]:
+        seen.add(faq_url)
+        t, h, _ = fetch_page(faq_url)
+        if t:
+            pages["FAQ-Seite"] = {"text": t, "headings": h}
+            break
+
+    # 4. URL-Pool aufbauen
+    url_pool = sitemap_urls if sitemap_urls else [
+        urljoin(base_url, l).rstrip("/") for l in links
+        if urljoin(base_url, l).startswith("http") and base_domain in urljoin(base_url, l)
+    ]
+
+    priority_list = []
     for u in url_pool:
         u_clean = u.rstrip("/")
-        if not is_valid_internal_url(u_clean):
+        if not is_valid_url(u_clean, seen):
             continue
-        path_lower = urlparse(u_clean).path.lower()
-        priority_urls.append((score_url(path_lower), u_clean, path_lower))
-        seen_urls.add(u_clean)
+        path = urlparse(u_clean).path.lower()
+        priority_list.append((url_priority(path), u_clean, path))
+        seen.add(u_clean)
+    priority_list.sort(reverse=True)
 
-    priority_urls.sort(reverse=True)
-
-    # ── Crawlen: bis zu 10 Seiten ──
-    crawled_links_pool = []
-    for _, sub_url, sub_path in priority_urls[:10]:
-        page_name = sub_path.strip("/").split("/")[-1][:40] or sub_path.strip("/")[:40]
+    # 5. Ebene 1: bis zu 10 Seiten
+    level2_links = []
+    for _, sub_url, sub_path in priority_list[:10]:
+        name = sub_path.strip("/").split("/")[-1][:40] or sub_path.strip("/")[:40]
         t, h, sub_links = fetch_page(sub_url)
         if t:
-            pages_content[page_name] = {"text": t, "headings": h}
-            # Links aus gecrawlten Seiten fuer 2. Ebene sammeln (nur wenn keine Sitemap)
+            pages[name] = {"text": t, "headings": h}
             if not sitemap_urls:
-                crawled_links_pool.extend(sub_links)
+                level2_links.extend(sub_links)
 
-    # ── Ebene 2: Links aus gecrawlten Seiten (nur wenn Sitemap fehlt + noch Platz) ──
-    if not sitemap_urls and len(pages_content) < 8:
-        level2_urls = []
-        for link in crawled_links_pool:
+    # 6. Ebene 2: bis zu 5 weitere Seiten (nur ohne Sitemap)
+    if not sitemap_urls and len(pages) < 8:
+        level2_list = []
+        for link in level2_links:
             full = urljoin(base_url, link).rstrip("/")
-            if full.startswith("http") and base_domain in full and is_valid_internal_url(full):
-                path_lower = urlparse(full).path.lower()
-                level2_urls.append((score_url(path_lower), full, path_lower))
-                seen_urls.add(full)
-        level2_urls.sort(reverse=True)
-        for _, sub_url, sub_path in level2_urls[:5]:
-            page_name = sub_path.strip("/").split("/")[-1][:40] or sub_path.strip("/")[:40]
+            if full.startswith("http") and base_domain in full and is_valid_url(full, seen):
+                path = urlparse(full).path.lower()
+                level2_list.append((url_priority(path), full, path))
+                seen.add(full)
+        level2_list.sort(reverse=True)
+        for _, sub_url, sub_path in level2_list[:5]:
+            name = sub_path.strip("/").split("/")[-1][:40] or sub_path.strip("/")[:40]
             t, h, _ = fetch_page(sub_url)
             if t:
-                pages_content[page_name] = {"text": t, "headings": h}
+                pages[name] = {"text": t, "headings": h}
 
-    # Crawl-Status bestimmen — 3 Stufen
-    total_text = " ".join(d.get("text","") for d in pages_content.values())
-    main_page_ok = "Startseite" in pages_content and len(pages_content.get("Startseite", {}).get("text", "")) > 200
-    subpages_ok = len(pages_content) > 1
+    # 7. Crawl-Status
+    total_text = " ".join(d.get("text", "") for d in pages.values())
+    main_ok = "Startseite" in pages and len(pages["Startseite"].get("text", "")) > 200
     total_chars = len(total_text)
 
-    # Stufe 1: Bot-Blocker — keine Daten
-    if not main_page_ok:
+    if not main_ok:
         stufe = 1
-    # Stufe 2: Nur Startseite oder sehr wenig Daten
-    elif not subpages_ok or total_chars < 800:
+    elif len(pages) <= 1 or total_chars < 800:
         stufe = 2
-    # Stufe 3: Vollständige Daten
     else:
         stufe = 3
 
-    crawl_status = {
+    return pages, {
         "stufe": stufe,
         "blocked": stufe == 1,
         "partial": stufe == 2,
         "complete": stufe == 3,
-        "main_page_ok": main_page_ok,
-        "pages_found": list(pages_content.keys()),
+        "pages_found": list(pages.keys()),
         "total_chars": total_chars,
     }
-    return pages_content, crawl_status
 
 
-def extract_nap(pages_content):
-    """
-    Extrahiert NAP-Daten (Name, Adresse, Telefon) aus gecrawlten Seiteninhalten.
-    Gibt nur zurueck was tatsaechlich im Text gefunden wurde — keine Annahmen.
-    """
-    import re
+# ══════════════════════════════════════════════════════════
+# NAP & FAQ EXTRAKTION
+# ══════════════════════════════════════════════════════════
 
-    # Alle gecrawlten Texte zusammenfuehren — Kontaktseite bevorzugen
-    ordered_texts = []
-    for prio_name in ["kontakt", "contact", "impressum", "startseite"]:
-        for page_name, data in pages_content.items():
-            if prio_name in page_name.lower():
-                ordered_texts.append(data.get("text", ""))
-    for page_name, data in pages_content.items():
-        ordered_texts.append(data.get("text", ""))
-    full_text = " ".join(ordered_texts)
+def extract_nap(pages):
+    """Extrahiert NAP aus gecrawlten Seiten. Nur was tatsächlich im Text steht."""
+    ordered = []
+    for prio in ["kontakt", "contact", "impressum", "startseite"]:
+        for name, data in pages.items():
+            if prio in name.lower():
+                ordered.append(data.get("text", ""))
+    for data in pages.values():
+        ordered.append(data.get("text", ""))
+    full = " ".join(ordered)
 
-    nap = {
-        "telefon": None,
-        "email": None,
-        "adresse": None,
-        "crawl_seiten": list(pages_content.keys()),
-    }
+    nap = {"telefon": None, "email": None, "adresse": None, "crawl_seiten": list(pages.keys())}
 
-    # Telefon: AT/DE/CH Formate
-    tel_match = re.search(
-        r'(\+43[\s\-./\d]{6,16}|\+49[\s\-./\d]{6,16}|\+41[\s\-./\d]{6,16}|0\d{3,5}[\s\-./\d]{4,12})',
-        full_text
-    )
-    if tel_match:
-        nap["telefon"] = tel_match.group().strip()
+    tel = re.search(r'(\+43[\s\-./\d]{6,16}|\+49[\s\-./\d]{6,16}|\+41[\s\-./\d]{6,16}|0\d{3,5}[\s\-./\d]{4,12})', full)
+    if tel:
+        nap["telefon"] = tel.group().strip()
 
-    # E-Mail
-    mail_match = re.search(r'[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,6}', full_text)
-    if mail_match:
-        nap["email"] = mail_match.group().strip()
+    mail = re.search(r'[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,6}', full)
+    if mail:
+        nap["email"] = mail.group().strip()
 
-    # Adresse: Strasse/Gasse/Weg/Platz + Hausnummer + PLZ + Ort (DACH)
-    adresse_match = re.search(
-        r'[A-Za-z\u00c0-\u017e]+'
-        r'(?:stra\u00dfe|gasse|weg|platz|allee|ring|promenade|str\.|g\.)'
+    addr = re.search(
+        r'[A-Za-z\u00c0-\u017e]+(?:stra\u00dfe|gasse|weg|platz|allee|ring|str\.|g\.)'
         r'\s*\d{1,4}[a-zA-Z]?,?\s*\d{4,5}\s+[A-Za-z\u00c0-\u017e][\w\u00c0-\u017e\-]*',
-        full_text, re.IGNORECASE
+        full, re.IGNORECASE
     )
-    if adresse_match:
-        nap["adresse"] = adresse_match.group().strip()
+    if addr:
+        nap["adresse"] = addr.group().strip()
 
     return nap
 
 
-def extract_faq(pages_content):
-    """
-    Extrahiert FAQ-Fragen aus gecrawlten Seiteninhalten.
-    Gibt nur zurueck was tatsaechlich im Text/HTML gefunden wurde.
-    """
-    import re
+def extract_faq(pages):
+    """Extrahiert FAQ-Fragen aus gecrawlten Seiten. Nur was tatsächlich im Text steht."""
+    items = []
+    source = None
 
-    faq_items = []
-    faq_source = None
-
-    for page_name, data in pages_content.items():
+    for name, data in pages.items():
         text = data.get("text", "")
         headings = data.get("headings", [])
-        is_faq_page = "faq" in page_name.lower()
+        is_faq = "faq" in name.lower()
 
-        # 1) Fragen aus Headings (H2/H3 mit Fragezeichen)
         for h in headings:
             clean = re.sub(r'\[H\d\]\s*|\[SPAN\]\s*', '', h).strip()
-            if clean.endswith("?") and 15 <= len(clean) <= 200:
-                if clean not in faq_items:
-                    faq_items.append(clean)
-                    if not faq_source:
-                        faq_source = page_name
+            if clean.endswith("?") and 15 <= len(clean) <= 200 and clean not in items:
+                items.append(clean)
+                if not source:
+                    source = name
 
-        # 2) Auf dedizierter FAQ-Seite: Saetze mit ? aus Fliestext
-        if is_faq_page and text:
-            sentences = re.split(r'(?<=[.!])\s+', text)
-            for s in sentences:
-                s_clean = s.strip()
-                if s_clean.endswith("?") and 20 <= len(s_clean) <= 200:
-                    if s_clean not in faq_items:
-                        faq_items.append(s_clean)
-                        if not faq_source:
-                            faq_source = page_name
+        if is_faq and text:
+            for s in re.split(r'(?<=[.!])\s+', text):
+                s = s.strip()
+                if s.endswith("?") and 20 <= len(s) <= 200 and s not in items:
+                    items.append(s)
+                    if not source:
+                        source = name
 
-    # Max 20, dedupliziert
-    seen = set()
-    result_list = []
-    for q in faq_items:
+    seen, deduped = set(), []
+    for q in items:
         if q not in seen:
             seen.add(q)
-            result_list.append(q)
-    result_list = result_list[:20]
+            deduped.append(q)
 
     return {
-        "fragen": result_list,
-        "anzahl": len(result_list),
-        "quelle": faq_source,
-        "faq_seite_gecrawlt": any("faq" in p.lower() for p in pages_content.keys()),
+        "fragen": deduped[:20],
+        "anzahl": len(deduped[:20]),
+        "quelle": source,
+        "faq_seite_gecrawlt": any("faq" in p.lower() for p in pages.keys()),
     }
 
-def format_crawl_for_prompt(pages_content):
-    """Formatiert gecrawlte Seiten fuer den Claude-Prompt."""
-    if not pages_content:
-        return "Keine Website-Inhalte konnten geladen werden."
-    output = []
-    for page_name, data in pages_content.items():
-        output.append(f"\n=== SEITE: {page_name.upper()} ===")
-        if data.get("headings"):
-            headings = data["headings"]
-            faq_fragen = [h for h in headings if h.startswith("[SPAN]") and "?" in h]
-            normale_headings = [h for h in headings if not h.startswith("[SPAN]")]
-            if normale_headings:
-                output.append("UEBERSCHRIFTEN: " + " | ".join(normale_headings[:10]))
-            if faq_fragen:
-                output.append(f"FAQ-SEKTION VORHANDEN ({len(faq_fragen)} Fragen gefunden):")
-                for fq in faq_fragen:
-                    output.append("  " + fq.replace("[SPAN] ", "- "))
-        output.append("TEXT: " + data["text"][:2500])
-    return "\n".join(output)
 
+# ══════════════════════════════════════════════════════════
+# FORMAT FÜR PROMPT
+# ══════════════════════════════════════════════════════════
+
+def format_for_prompt(pages):
+    if not pages:
+        return "Keine Website-Inhalte konnten geladen werden."
+    out = []
+    for name, data in pages.items():
+        out.append(f"\n=== SEITE: {name.upper()} ===")
+        headings = data.get("headings", [])
+        faq_h = [h for h in headings if h.startswith("[SPAN]") and "?" in h]
+        normal_h = [h for h in headings if not h.startswith("[SPAN]")]
+        if normal_h:
+            out.append("UEBERSCHRIFTEN: " + " | ".join(normal_h[:10]))
+        if faq_h:
+            out.append(f"FAQ-SEKTION ({len(faq_h)} Fragen):")
+            for fh in faq_h:
+                out.append("  " + fh.replace("[SPAN] ", "- "))
+        out.append("TEXT: " + data["text"][:2500])
+    return "\n".join(out)
+
+
+# ══════════════════════════════════════════════════════════
+# API HELPER
+# ══════════════════════════════════════════════════════════
+
+def call_api(client, model, max_tokens, messages):
+    """API-Call mit Retry und Haiku-Fallback bei OverloadedError."""
+    fallback = "claude-haiku-4-5-20251001"
+    for current_model in ([model, fallback] if model != fallback else [model]):
+        for attempt in range(3):
+            try:
+                return client.messages.create(
+                    model=current_model,
+                    max_tokens=max_tokens,
+                    messages=messages
+                )
+            except Exception as e:
+                if "Overloaded" in type(e).__name__:
+                    if attempt < 2:
+                        wait = 15 * (attempt + 1)
+                        st.warning(f"⏳ API ausgelastet ({current_model}) — warte {wait}s... (Versuch {attempt+2}/3)")
+                        time.sleep(wait)
+                    else:
+                        if current_model != fallback:
+                            st.warning(f"⚠️ {current_model} nicht erreichbar — wechsle auf Fallback-Modell...")
+                        break
+                else:
+                    raise
+    raise RuntimeError("API nach allen Versuchen nicht erreichbar. Bitte in 1-2 Minuten erneut versuchen.")
+
+
+def parse_json(raw):
+    """Robuste JSON-Extraktion aus API-Antwort."""
+    text = raw.strip()
+
+    # Versuch 1: direkt
+    try:
+        return json.loads(text)
+    except Exception:
+        pass
+
+    # Versuch 2: ```json Block
+    if "```" in text:
+        for part in text.split("```"):
+            part = part.strip()
+            if part.startswith("json"):
+                part = part[4:].strip()
+            if part.startswith("{"):
+                try:
+                    return json.loads(part)
+                except Exception:
+                    pass
+
+    # Versuch 3: { ... } extrahieren
+    start, end = text.find("{"), text.rfind("}") + 1
+    if start >= 0 and end > start:
+        candidate = text[start:end]
+        try:
+            return json.loads(candidate)
+        except Exception:
+            pass
+        # Versuch 4: trailing commas + single quotes bereinigen
+        candidate = re.sub(r",\s*([}\]])", r"\1", candidate)
+        candidate = re.sub(r"'([^']*)'(\s*:)", r'"\1"\2', candidate)
+        try:
+            return json.loads(candidate)
+        except Exception:
+            pass
+
+    return {}
+
+
+def clamp_score(raw):
+    """Score auf 0–10 (int) normalisieren — alle Formate."""
+    try:
+        if isinstance(raw, str):
+            raw = raw.split("/")[0].strip()
+        return max(0, min(10, int(round(float(raw)))))
+    except Exception:
+        return 0
+
+
+# ══════════════════════════════════════════════════════════
+# HAUPTANALYSE
+# ══════════════════════════════════════════════════════════
 
 def run_analysis(hotel_name, location, url, business_type):
-    api_key = get_api_key()
-    if not api_key:
-        st.error("❌ API-Key nicht konfiguriert. Bitte in Streamlit Secrets eintragen (ANTHROPIC_API_KEY).")
+    try:
+        api_key = st.secrets["ANTHROPIC_API_KEY"]
+    except Exception:
+        st.error("❌ API-Key nicht konfiguriert (ANTHROPIC_API_KEY in Streamlit Secrets fehlt).")
         return None
 
-    # Echtes Multi-Page Crawling
-    with st.spinner("\U0001f50d Website wird gecrawlt... (Startseite + relevante Unterseiten)"):
-        pages_content, crawl_status = crawl_website(url)
-        website_content = format_crawl_for_prompt(pages_content)
-        pages_found = list(pages_content.keys())
+    # ── CRAWLING ──
+    with st.spinner("🔍 Website wird gecrawlt..."):
+        pages, crawl_status = crawl_website(url)
+        website_content = format_for_prompt(pages)
+        pages_found = crawl_status["pages_found"]
 
-    # Bot-Schutz erkannt: Analyse stoppen und klare Meldung ausgeben
+    # Geblockt
     if crawl_status["blocked"]:
         st.error("❌ **Analyse nicht möglich — Website blockiert automatische Zugriffe**")
         st.markdown(f"""
 <div style="background:#1a1a2e;border:2px solid #e74c3c;border-radius:12px;padding:24px;margin:16px 0;">
     <h3 style="color:#e74c3c;margin-top:0;">🚫 Server-Blockierung erkannt</h3>
-    <p style="color:#ecf0f1;font-size:15px;">
-        Die Website <strong style="color:#f39c12;">{url}</strong> blockiert automatische Zugriffe (Bot-Schutz / Firewall aktiv).<br>
-        Eine GEO-Readiness-Analyse ist ohne lesbare Website-Inhalte nicht seriös möglich.
-    </p>
-    <hr style="border-color:#444;margin:16px 0;">
-    <h4 style="color:#f39c12;">📋 Was das für den Betrieb bedeutet:</h4>
-    <ul style="color:#ecf0f1;font-size:14px;line-height:1.8;">
-        <li>Aktuelle Website-Inhalte (Angebote, FAQs, USPs) können von automatischen Crawlern <strong>nicht gelesen werden</strong></li>
-        <li>KI-Systeme können keine aktuellen Inhalte dieser Website direkt abrufen — sie sind auf veraltete oder externe Daten angewiesen</li>
-        <li>Suchmaschinen-Crawler (inkl. Google) erhalten möglicherweise <strong>keinen Zugriff</strong> auf aktuelle Seiteninhalte</li>
-        <li>Dies ist ein technisches Problem das unabhängig von der inhaltlichen Qualität der Website besteht</li>
-    </ul>
-    <hr style="border-color:#444;margin:16px 0;">
-    <h4 style="color:#27ae60;">💡 Deine Chance als KI-Trainer:</h4>
+    <p style="color:#ecf0f1;">Die Website <strong>{url}</strong> blockiert automatische Zugriffe (Bot-Schutz aktiv).<br>
+    Eine GEO-Readiness-Analyse ist ohne lesbare Website-Inhalte nicht möglich.</p>
+    <hr style="border-color:#444;">
     <p style="color:#ecf0f1;font-size:14px;">
-        Kontaktiere den Betrieb aktiv mit diesem Hinweis — die Server-Blockierung ist ein konkretes, 
-        lösbares Problem das sofortigen Handlungsbedarf signalisiert. Das ist ein starker Einstieg 
-        für ein Erstgespräch.
+    Aktuelle Website-Inhalte (Angebote, FAQs, USPs) können von Crawlern nicht gelesen werden.<br>
+    Suchmaschinen-Crawler erhalten möglicherweise keinen Zugriff auf aktuelle Seiteninhalte.<br>
+    Dies ist ein technisches Problem unabhängig von der inhaltlichen Qualität der Website.
     </p>
-    <div style="background:#0d3b2e;border-radius:8px;padding:16px;margin-top:12px;">
-        <strong style="color:#27ae60;">Empfohlener Kontakttext:</strong><br>
-        <em style="color:#bdc3c7;font-size:13px;">
-        "Guten Tag, bei einer technischen Überprüfung Ihrer Website haben wir festgestellt, 
-        dass der Server von {hotel_name} automatische Zugriffe blockiert. 
-        Das bedeutet: Aktuelle Inhalte Ihrer Website — Angebote, FAQs, Alleinstellungsmerkmale — 
-        können von Suchmaschinen-Crawlern nicht zuverlässig gelesen werden. 
-        Gerne zeige ich Ihnen in einem kurzen Gespräch, was das konkret bedeutet und wie das behoben werden kann."
-        </em>
-    </div>
+    <h4 style="color:#27ae60;">💡 Empfohlener Kontakttext:</h4>
+    <em style="color:#bdc3c7;font-size:13px;">
+    "Guten Tag, bei einer technischen Überprüfung Ihrer Website haben wir festgestellt,
+    dass der Server von {hotel_name} automatische Zugriffe blockiert.
+    Das bedeutet: Aktuelle Inhalte Ihrer Website können von Suchmaschinen-Crawlern
+    nicht zuverlässig gelesen werden.
+    Gerne zeige ich Ihnen in einem kurzen Gespräch, was das konkret bedeutet."
+    </em>
 </div>
 """, unsafe_allow_html=True)
         return None
 
-    # STUFE 2: Teilweise Daten — Warnung anzeigen, eingeschränkten Report liefern
+    # Eingeschränkte Datenbasis
     if crawl_status["partial"]:
         st.warning(
-            f"⚠️ **Eingeschränkte Datenbasis** — Nur {len(pages_found)} Seite(n) konnten geladen werden "
-            f"({', '.join(pages_found)}). Faktoren die Unterseiten-Daten benötigen (FAQ, lokale Keywords) "
-            f"können möglicherweise nicht vollständig bewertet werden. "
-            f"Der Report wird mit entsprechenden Einschränkungshinweisen geliefert."
+            f"⚠️ **Eingeschränkte Datenbasis** — {len(pages_found)} Seite(n) geladen "
+            f"({', '.join(pages_found)}). Faktoren die Unterseiten benötigen können eingeschränkt sein."
         )
 
-    crawl_info = f"Gecrawlte Seiten ({len(pages_found)}): {', '.join(pages_found) if pages_found else 'KEINE'}"
-    crawl_hinweis = ""
-
-
-
-    prompt = f"""Du bist ein Experte fuer GEO-Optimierung (Generative Engine Optimization) fuer Tourismus-Websites im DACH-Raum.
-
-Analysiere folgende Website fuer KI-Suchmaschinen-Sichtbarkeit.
-WICHTIG: Die folgenden Inhalte wurden DIREKT von der Website gecrawlt.
-Analysiere NUR diese tatsaechlichen Inhalte - keine Vermutungen, keine Ergaenzungen aus deinem Wissen.
-
-Betrieb: {hotel_name}
-Ort: {location}
-Website: {url}
-Typ: {business_type}
-{crawl_info}
-{crawl_hinweis}
-
-=== GECRAWLTE WEBSITE-INHALTE ===
-{website_content}
-=== ENDE GECRAWLTE INHALTE ===
-
-WICHTIGE ANALYSE-REGELN:
-- Berücksichtige FAQ-Inhalte auf ALLEN Seiten, nicht nur der Startseite
-- Bei H1/Headlines: Bewerte auch H2/H3 Überschriften positiv wenn Region/Ort dort vorkommt
-- Lokale Keywords: Prüfe Unterseiten (Aktivitäten, Umgebung, Sommer/Winter) — nicht nur Startseite
-- NAP = Name, Adresse, Phone (Telefon) — erkläre diesen Begriff im Kommentar immer kurz
-- USP-Bewertung: Unterscheide DREI Kategorien von Alleinstellungsmerkmalen:
-
-  1. LAGE-USP (naturgegebene Einzigartigkeit — unabhängig von Kategorie bewertbar):
-     Direkt am See, einzigartiger Ausblick, besondere Ruhelage, historisches Gebäude — das ist ein echter USP WENN es wirklich einzigartig ist und klar kommuniziert wird. Gilt für alle Kategorien gleich.
-
-  2. INFRASTRUKTUR-ASSETS (kategorieabhängig bewerten):
-     * Appartement/Ferienwohnung: Sauna, Pool, Skidirektlage, Seeblick = USP (nicht selbstverständlich)
-     * 3-4 Sterne Hotel: Sauna, gute Lage = Marktstandard, KEIN USP
-     * 4-5 Sterne Hotel: Sauna, Pool, Wellness, Skidirektlage = vom Markt vorausgesetzt, KEIN USP
-
-  3. THEMATISCHE/LEISTUNGS-USPs (stärkste Kategorie — unabhängig von Betriebstyp):
-     Ganztägige Kinderbetreuung, täglich geführte Wanderungen, tägliches Sportprogramm, kulinarische Spezialisierung, besondere Familiengeschichte, zertifizierte Nachhaltigkeitsprogramme — das sind echte Alleinstellungsmerkmale die kommuniziert und bewertet werden sollen
-- Sei fair und präzise — gib keinen schlechten Score wenn Inhalte vorhanden aber nicht auf der Startseite sind
-
-Bewerte EXAKT diese 5 Faktoren auf einer Skala von 0–10:
-1. FAQ-Sektion (Strukturierte Fragen & Antworten auf der gesamten Website)
-2. H1/Headline-Optimierung (Ortsbezug in H1 ODER H2, Haupt-USP, Keywords)
-3. Lokale Keywords (Region, Bundesland, Aktivitäten, Saison — gesamte Website)
-4. NAP-Konsistenz (Name, Adresse, Telefon — Vollständigkeit & einheitliche Darstellung)
-5. USP-Klarheit (Alleinstellungsmerkmale — auch Ausstattung, Lage, Besonderheiten zählen)
-
-Erstelle zusätzlich das komplette GEO-Optimierungspaket Professional:
-
-FAQ: 10 konkrete Fragen+Antworten speziell fuer diesen Betrieb, KI-optimiert, auf Deutsch
-H1_NEU: Optimierter H1-Titel fuer die Startseite (max 70 Zeichen, mit Ort und USP)
-H1_SUB: Optimierte Subheadline (max 120 Zeichen)
-USP_BOX: 4 Alleinstellungsmerkmale mit Emoji, Titel und 1 Satz Beschreibung
-KEYWORDS: 20 lokale Keywords fuer die Region
-GOOGLE_BUSINESS: Fertiger Beschreibungstext fuer Google Business Profil (max 750 Zeichen, keyword-reich)
-META_START: Meta-Description fuer Startseite (max 155 Zeichen)
-META_ZIMMER: Meta-Description fuer Zimmer-Seite (max 155 Zeichen)
-META_PREISE: Meta-Description fuer Preise/Angebote-Seite (max 155 Zeichen)
-UEBER_UNS: Vollstaendiger "Ueber uns" Text neu geschrieben (250-300 Woerter, KI-lesbar, mit Geschichte, Lage, USPs)
-
-Antworte NUR als valides JSON ohne Markdown:
-{{
-  "gesamtscore": <Zahl 0-50>,
-  "faktoren": [
-    {{"name": "FAQ-Sektion", "score": <0-10>, "kommentar": "<1 Satz>"}},
-    {{"name": "H1-Optimierung", "score": <0-10>, "kommentar": "<1 Satz>"}},
-    {{"name": "Lokale Keywords", "score": <0-10>, "kommentar": "<1 Satz>"}},
-    {{"name": "NAP-Konsistenz", "score": <0-10>, "kommentar": "<1 Satz>"}},
-    {{"name": "USP-Klarheit", "score": <0-10>, "kommentar": "<1 Satz>"}}
-  ],
-  "quickwins": [
-    {{"prioritaet": "sofort", "massnahme": "<Maßnahme>", "impact": "<Effekt>"}},
-    {{"prioritaet": "sofort", "massnahme": "<Maßnahme>", "impact": "<Effekt>"}},
-    {{"prioritaet": "kurz", "massnahme": "<Maßnahme>", "impact": "<Effekt>"}},
-    {{"prioritaet": "kurz", "massnahme": "<Maßnahme>", "impact": "<Effekt>"}},
-    {{"prioritaet": "mittel", "massnahme": "<Maßnahme>", "impact": "<Effekt>"}}
-  ],
-  "zusammenfassung": "<2-3 Saetze Gesamtbewertung>",
-  "paket": {{
-    "faq": [
-      {{"frage": "<Frage>", "antwort": "<Antwort>"}}
-    ],
-    "h1_neu": "<Optimierter H1-Titel>",
-    "h1_sub": "<Optimierte Subheadline>",
-    "usp_box": [
-      {{"emoji": "<Emoji>", "titel": "<Titel>", "text": "<1 Satz>"}}
-    ],
-    "keywords": ["<keyword1>", "<keyword2>"],
-    "google_business": "<Fertiger Google Business Text>",
-    "meta_start": "<Meta-Description Startseite>",
-    "meta_zimmer": "<Meta-Description Zimmer>",
-    "meta_preise": "<Meta-Description Preise>",
-    "ueber_uns": "<Vollstaendiger Ueber uns Text>"
-  }}
-}}"""
-
-    client = anthropic.Anthropic(api_key=api_key)
-
-    def call_api_with_retry(model, max_tokens, messages, spinner_text=""):
-        """API-Call mit bis zu 3 Retries bei OverloadedError. Fallback auf Haiku."""
-        import time
-        fallback_model = "claude-haiku-4-5-20251001"
-        models_to_try = [model, fallback_model] if model != fallback_model else [model]
-
-        for model_attempt in models_to_try:
-            for retry in range(3):
-                try:
-                    return client.messages.create(
-                        model=model_attempt,
-                        max_tokens=max_tokens,
-                        messages=messages
-                    )
-                except Exception as e:
-                    err_str = str(type(e).__name__)
-                    if "Overloaded" in err_str and retry < 2:
-                        wait = 15 * (retry + 1)
-                        st.warning(f"⏳ API ausgelastet ({model_attempt}) — warte {wait}s... (Versuch {retry+2}/3)")
-                        time.sleep(wait)
-                    elif "Overloaded" in err_str and retry == 2:
-                        # Alle Retries für dieses Modell erschöpft → nächstes Modell
-                        if model_attempt != fallback_model:
-                            st.warning(f"⚠️ {model_attempt} nicht erreichbar — wechsle auf Fallback-Modell...")
-                        break
-                    else:
-                        raise
-        raise RuntimeError("API nach allen Versuchen nicht erreichbar. Bitte in 1-2 Minuten erneut versuchen.")
-
-    def safe_json_parse(raw):
-        """Robuste JSON-Extraktion aus Claude-Antwort mit mehreren Fallbacks."""
-        import re
-        text = raw.strip()
-
-        # Versuch 1: Direkt parsen
-        try:
-            return json.loads(text)
-        except Exception:
-            pass
-
-        # Versuch 2: ```json ... ``` Block extrahieren
-        if "```" in text:
-            parts = text.split("```")
-            for part in parts:
-                part = part.strip()
-                if part.startswith("json"):
-                    part = part[4:].strip()
-                if part.startswith("{"):
-                    try:
-                        return json.loads(part)
-                    except Exception:
-                        pass
-
-        # Versuch 3: Erstes { bis letztes } extrahieren
-        start = text.find("{")
-        end = text.rfind("}") + 1
-        if start >= 0 and end > start:
-            candidate = text[start:end]
-            try:
-                return json.loads(candidate)
-            except Exception:
-                pass
-
-        # Versuch 4: Trailing-Komma-Fehler beheben und nochmal versuchen
-        if start >= 0 and end > start:
-            candidate = text[start:end]
-            candidate = re.sub(r",\s*([}\]])", r"\1", candidate)  # trailing commas
-            candidate = re.sub(r"'([^']*)'\s*:", r'"\1":', candidate)  # single quotes keys
-            try:
-                return json.loads(candidate)
-            except Exception:
-                pass
-
-        # Kein valides JSON gefunden - leeres Fallback-Objekt zurückgeben
-        return {}
-
-    # ── CALL 1: Analyse-Report (kompakt, schnell) ──
-    # Datenverfügbarkeit pro Faktor prüfen
-    has_content = bool(website_content and len(website_content) > 200)
+    # ── ANALYSE-PROMPT ──
     has_faq = "FAQ-FRAGEN" in website_content or "FAQ-SEKTION" in website_content
     has_headings = "UEBERSCHRIFTEN:" in website_content
-    has_nap_data = any(kw in website_content for kw in ["Tel", "Telefon", "+43", "+49", "+41", "Adresse", "Straße", "Gasse", "Platz", "Weg ", "Str.", "@"])
-
-    # Crawl-Stufe für Prompt aufbereiten
-    crawl_stufe = crawl_status.get("stufe", 3)
-    if crawl_stufe == 2:
-        stufen_hinweis = (
-            "CRAWL-QUALITAET: STUFE 2 — NUR TEILWEISE DATEN VERFUEGBAR.\n"
-            f"Nur folgende Seiten konnten geladen werden: {', '.join(pages_found)}.\n"
-            "Faktoren die Unterseiten benoetigen (FAQ, lokale Keywords) koennen eingeschraenkt sein.\n"
-            "Kennzeichne jeden Faktor der moeglicherweise unvollstaendig ist mit: "
-            "'(Hinweis: Nur Teilseiten gecrawlt — Bewertung moeglicherweise unvollstaendig.)'"
-        )
-    else:
-        stufen_hinweis = f"CRAWL-QUALITAET: STUFE 3 — Vollstaendige Daten ({len(pages_found)} Seiten gecrawlt)."
+    has_nap = any(kw in website_content for kw in ["Tel", "+43", "+49", "+41", "Adresse", "Straße", "Gasse", "@"])
 
     datenverfuegbarkeit = f"""
-DATENVERFUEGBARKEIT (PFLICHTHINWEIS):
-{stufen_hinweis}
-- Website-Inhalte geladen: {"JA" if has_content else "NEIN — keine Daten verfuegbar"}
-- FAQ-Daten vorhanden: {"JA" if has_faq else "NEIN"}
-- Ueberschriften-Daten vorhanden: {"JA" if has_headings else "NEIN"}
-- NAP-Daten (Adresse/Telefon) vorhanden: {"JA" if has_nap_data else "NEIN"}
+DATENVERFUEGBARKEIT:
+- Seiten gecrawlt: {', '.join(pages_found)}
+- FAQ-Daten: {"JA" if has_faq else "NEIN"}
+- Ueberschriften: {"JA" if has_headings else "NEIN"}
+- NAP-Daten: {"JA" if has_nap else "NEIN"}
 
-ABSOLUTE PFLICHTREGELN — KEINE AUSNAHMEN:
-1. Wenn fuer einen Faktor KEINE DATEN vorhanden sind: Score = 0, Kommentar = "Keine Website-Daten verfuegbar — Bewertung nicht moeglich."
-2. NIEMALS Annahmen treffen oder aus deinem Trainingswissen ergaenzen.
-3. NIEMALS behaupten etwas "fehlt" wenn du es schlicht nicht gesehen hast — nur bewerten was EXPLIZIT in den gecrawlten Inhalten steht.
-4. Bei NAP: Nur als vorhanden bewerten wenn Adresse UND Telefon im gecrawlten Text sichtbar sind.
-5. Quick Wins NUR fuer Faktoren erstellen die tatsaechlich bewertet wurden (Score > 0). Fuer Faktoren ohne Datenbasis KEINE Quick Wins.
-6. Bei Stufe 2 (Teilseiten): Jeden betroffenen Faktor-Kommentar mit Einschraenkungshinweis versehen.
+ABSOLUTE REGELN:
+1. Score = 0 + Kommentar "Keine Daten verfuegbar" wenn Datenbasis fehlt
+2. Nur bewerten was EXPLIZIT im gecrawlten Text steht — keine Annahmen
+3. Quick Wins NUR fuer Faktoren mit Score > 0
+4. NAP: nur vorhanden wenn Adresse UND Telefon im gecrawlten Text sichtbar
 """
 
     analyse_prompt = f"""Du bist GEO-Optimierungs-Experte fuer Tourismus-Websites im DACH-Raum.
 
 Betrieb: {hotel_name} | Ort: {location} | Typ: {business_type}
-{crawl_info}
+Gecrawlte Seiten ({len(pages_found)}): {', '.join(pages_found)}
 {datenverfuegbarkeit}
 
 GECRAWLTE INHALTE:
 {website_content[:15000]}
 
-Bewerte diese 5 Faktoren (0-10) basierend auf den gecrawlten Inhalten:
+Bewerte 5 Faktoren (Score 0-10, ganze Zahl):
 1. FAQ-Sektion: Strukturierte Fragen & Antworten vorhanden?
 2. H1-Optimierung: Ortsbezug und USP in Hauptueberschriften?
 3. Lokale Keywords: Region, Bundesland, Aktivitaeten, Saison?
 4. NAP-Konsistenz: Name, Adresse, Telefon vollstaendig & einheitlich?
-5. USP-Klarheit: Klare Alleinstellungsmerkmale kommuniziert?
+5. USP-Klarheit: Echte Alleinstellungsmerkmale kommuniziert?
 
-USP-Regel: Appartement mit Sauna/Panorama = echter USP. Hotel 3-4 Sterne mit Sauna = Standard.
-WICHTIG: Sei fair - wenn FAQ auf Unterseite vorhanden, ist das ein gutes Zeichen (6-8 Punkte).
-ACHTUNG JS-Websites: Wenn du "ZUSATZ-FAQ-INHALTE:" oder "FAQ:" Eintraege im Text siehst, sind das extrahierte Accordion-Fragen von Next.js/React-Seiten. Diese ZAEHLEN als vollwertige FAQ-Sektion (7-9 Punkte)!
+USP-Kategorien:
+- Lage-USP (direkter See, einzigartiger Ausblick) = USP fuer alle Kategorien
+- Infrastruktur: Appartement mit Sauna = USP; 3-4 Sterne Hotel mit Sauna = Standard
+- Thematisch: Kinderbetreuung, Fuehrungen, Sportprogramm = starker USP
 
-Antworte NUR als JSON:
+Antworte NUR als valides JSON (keine Kommentare, kein Markdown):
 {{
-  "gesamtscore": <0-50>,
   "faktoren": [
-    {{"name": "FAQ-Sektion", "score": <0-10>, "kommentar": "<1 praegnanter Satz>"}},
-    {{"name": "H1-Optimierung", "score": <0-10>, "kommentar": "<1 praegnanter Satz>"}},
-    {{"name": "Lokale Keywords", "score": <0-10>, "kommentar": "<1 praegnanter Satz>"}},
-    {{"name": "NAP-Konsistenz", "score": <0-10>, "kommentar": "<1 praegnanter Satz>"}},
-    {{"name": "USP-Klarheit", "score": <0-10>, "kommentar": "<1 praegnanter Satz>"}}
+    {{"name": "FAQ-Sektion", "score": 0, "kommentar": "<1 Satz>"}},
+    {{"name": "H1-Optimierung", "score": 0, "kommentar": "<1 Satz>"}},
+    {{"name": "Lokale Keywords", "score": 0, "kommentar": "<1 Satz>"}},
+    {{"name": "NAP-Konsistenz", "score": 0, "kommentar": "<1 Satz>"}},
+    {{"name": "USP-Klarheit", "score": 0, "kommentar": "<1 Satz>"}}
   ],
   "quickwins": [
-    {{"prioritaet": "sofort", "massnahme": "<Massnahme nur fuer Faktoren mit Score>0>", "impact": "<messbarer Effekt>"}},
-    {{"prioritaet": "kurz", "massnahme": "<Massnahme nur fuer Faktoren mit Score>0>", "impact": "<messbarer Effekt>"}}
+    {{"prioritaet": "sofort", "massnahme": "<Massnahme>", "impact": "<Effekt>"}},
+    {{"prioritaet": "sofort", "massnahme": "<Massnahme>", "impact": "<Effekt>"}},
+    {{"prioritaet": "kurz", "massnahme": "<Massnahme>", "impact": "<Effekt>"}},
+    {{"prioritaet": "kurz", "massnahme": "<Massnahme>", "impact": "<Effekt>"}},
+    {{"prioritaet": "mittel", "massnahme": "<Massnahme>", "impact": "<Effekt>"}}
   ],
-  "zusammenfassung": "<2-3 Saetze ehrliche Gesamtbewertung. Bei Stufe 2: explizit erwaehnen welche Faktoren aufgrund eingeschraenkter Datenbasis nicht vollstaendig bewertet werden konnten.>",
-  "datenbasis": "<'vollstaendig' | 'eingeschraenkt — nur Teilseiten' | 'keine Daten'>"
+  "zusammenfassung": "<2-3 Saetze Gesamtbewertung>"
 }}"""
 
+    client = anthropic.Anthropic(api_key=api_key)
+
+    # ── API CALL 1: Analyse ──
     with st.spinner("📊 Analysiere Website-Inhalte..."):
-        msg1 = call_api_with_retry(
-            model="claude-opus-4-5",
-            max_tokens=2000,
-            messages=[{"role": "user", "content": analyse_prompt}]
-        )
-    try:
-        result = safe_json_parse(msg1.content[0].text)
-    except RuntimeError as e:
-        st.error(f"❌ {e}")
-        return None
-    except Exception:
-        st.error("❌ Analyse-Ergebnis konnte nicht verarbeitet werden. Bitte erneut versuchen.")
+        try:
+            msg1 = call_api(client, "claude-opus-4-5", 2000,
+                            [{"role": "user", "content": analyse_prompt}])
+        except RuntimeError as e:
+            st.error(f"❌ {e}")
+            return None
+
+    result = parse_json(msg1.content[0].text)
+
+    # ── SERVERSEITIGE VALIDIERUNG ──
+    if not result or "faktoren" not in result:
+        st.error("❌ Analyse lieferte kein verwertbares Ergebnis. Bitte erneut versuchen.")
         return None
 
-    # ── CALL 2: Optimierungspaket (separat, mit eigenem Token-Budget) ──
-    paket_prompt = f"""Du erstellst das GEO-Optimierungspaket Professional fuer diesen Betrieb.
+    faktoren = result.get("faktoren", [])
+    if len(faktoren) != 5:
+        st.error(f"❌ Analyse unvollständig ({len(faktoren)}/5 Faktoren). Bitte erneut versuchen.")
+        return None
+
+    # Scores clampen — serverseitig, unabhängig von Claude-Output
+    for f in faktoren:
+        f["score"] = clamp_score(f.get("score", 0))
+
+    # Gesamtscore immer selbst berechnen
+    result["gesamtscore"] = sum(f["score"] for f in faktoren)
+
+    # Quickwins validieren
+    raw_qw = result.get("quickwins", [])
+    result["quickwins"] = [
+        w for w in raw_qw
+        if isinstance(w, dict)
+        and str(w.get("prioritaet", "")).strip() in ("sofort", "kurz", "mittel")
+        and str(w.get("massnahme", "")).strip()
+        and str(w.get("impact", "")).strip()
+    ]
+
+    # ── API CALL 2: Optimierungspaket ──
+    paket_prompt = f"""Erstelle ein GEO-Optimierungspaket fuer diesen Tourismusbetrieb.
 
 Betrieb: {hotel_name} | Ort: {location} | Typ: {business_type}
 
-WEBSITE-INHALTE (gecrawlt):
+GECRAWLTE WEBSITE-INHALTE:
 {website_content[:12000]}
 
-Erstelle auf Basis der tatsaechlichen Website-Inhalte:
-- FAQ: 10 Fragen+Antworten, KI-optimiert, zum Betrieb passend
-- H1_NEU: Optimierter Seitentitel (max 70 Zeichen, mit Ort+USP)
-- H1_SUB: Subheadline (max 120 Zeichen)
-- USP_BOX: 4 echte Alleinstellungsmerkmale (Emoji + Titel + 1 Satz)
-- KEYWORDS: 20 lokale Keywords fuer die Region
-- GOOGLE_BUSINESS: Google Business Text (max 750 Zeichen, keyword-reich)
-- META_START: Meta-Description Startseite (max 155 Zeichen)
-- META_ZIMMER: Meta-Description Zimmer/Appartements (max 155 Zeichen)
-- META_PREISE: Meta-Description Preise/Angebote (max 155 Zeichen)
-- UEBER_UNS: "Ueber uns" Text (250-300 Woerter, KI-lesbar, mit Lage+Geschichte+USPs)
+WICHTIG: Nur Fakten aus gecrawlten Inhalten — keine Erfindungen.
 
-WICHTIG: Nur Fakten aus gecrawlten Inhalten verwenden. Keine Erfindungen.
-
-Antworte NUR als JSON:
+Antworte NUR als valides JSON (kein Markdown):
 {{
   "faq": [{{"frage": "<Frage>", "antwort": "<Antwort>"}}],
-  "h1_neu": "<H1-Titel>",
-  "h1_sub": "<Subheadline>",
+  "h1_neu": "<Optimierter H1-Titel max 70 Zeichen>",
+  "h1_sub": "<Subheadline max 120 Zeichen>",
   "usp_box": [{{"emoji": "<>", "titel": "<>", "text": "<1 Satz>"}}],
   "keywords": ["<kw1>", "<kw2>"],
-  "google_business": "<Text>",
-  "meta_start": "<Meta>",
-  "meta_zimmer": "<Meta>",
-  "meta_preise": "<Meta>",
-  "ueber_uns": "<Text>"
+  "google_business": "<Google Business Text max 750 Zeichen>",
+  "meta_start": "<Meta-Description Startseite max 155 Zeichen>",
+  "meta_zimmer": "<Meta-Description Zimmer max 155 Zeichen>",
+  "meta_preise": "<Meta-Description Preise max 155 Zeichen>",
+  "ueber_uns": "<Ueber uns Text 250-300 Woerter>"
 }}"""
 
     with st.spinner("📦 Erstelle Optimierungspaket..."):
-        msg2 = call_api_with_retry(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=3000,
-            messages=[{"role": "user", "content": paket_prompt}]
-        )
-    try:
-        paket = safe_json_parse(msg2.content[0].text)
-    except RuntimeError as e:
-        st.warning(f"⚠️ Optimierungspaket nicht verfügbar: {e}")
-        paket = {}
-    except Exception:
-        paket = {}
+        try:
+            msg2 = call_api(client, "claude-haiku-4-5-20251001", 3000,
+                            [{"role": "user", "content": paket_prompt}])
+            paket = parse_json(msg2.content[0].text)
+        except RuntimeError as e:
+            st.warning(f"⚠️ Optimierungspaket nicht verfügbar: {e}")
+            paket = {}
+        except Exception:
+            paket = {}
+
     if not paket:
-        st.warning("⚠️ Optimierungspaket konnte nicht erstellt werden — Analyse-Report ist trotzdem verfügbar.")
+        st.warning("⚠️ Optimierungspaket konnte nicht erstellt werden — Analyse-Report ist verfügbar.")
+
+    # ── RESULT ZUSAMMENSTELLEN ──
     result["paket"] = paket
     result["hotelName"] = hotel_name
     result["location"] = location
     result["url"] = url
     result["type"] = business_type
     result["email"] = ""
-    result["date"] = __import__("datetime").date.today().strftime("%d.%m.%Y")
+    result["date"] = datetime.date.today().strftime("%d.%m.%Y")
+    result["nap"] = extract_nap(pages)
+    result["faq"] = extract_faq(pages)
 
-    # ── NAP & FAQ strukturiert extrahieren und speichern ──
-    nap_data = extract_nap(pages_content)
-    faq_data = extract_faq(pages_content)
-    result["nap"] = nap_data
-    result["faq"] = faq_data
     return result
 
-# ─── PDF GENERATOR ───
+
+# ══════════════════════════════════════════════════════════
+# PDF GENERATOR
+# ══════════════════════════════════════════════════════════
+
 def sanitize(text):
     if not text:
         return ""
@@ -945,6 +687,7 @@ def sanitize(text):
     for k, v in replacements.items():
         text = text.replace(k, v)
     return text.encode('latin-1', errors='replace').decode('latin-1')
+
 
 def generate_pdf(r):
     pdf = FPDF()
@@ -965,9 +708,9 @@ def generate_pdf(r):
     pdf.set_font("Helvetica", "", 9)
     pdf.set_text_color(180, 190, 200)
     pdf.set_x(15)
-    pdf.cell(0, 6, sanitize(f"{r['location']} | {r['type']} | Erstellt am {r['date']}"), ln=True)
+    pdf.cell(0, 6, sanitize(f"{r['location']} | {r['type']} | {r['date']}"), ln=True)
 
-    # Score
+    # Score Box
     score = r["gesamtscore"]
     pdf.set_fill_color(61, 122, 94)
     pdf.rect(158, 8, 38, 28, 'F')
@@ -978,7 +721,6 @@ def generate_pdf(r):
     pdf.set_font("Helvetica", "", 8)
     pdf.set_xy(158, 26)
     pdf.cell(38, 6, "von 50 Punkten", align="C", ln=True)
-
     pdf.ln(18)
 
     # Zusammenfassung
@@ -997,32 +739,23 @@ def generate_pdf(r):
     pdf.ln(2)
 
     for f in r["faktoren"]:
-        score_f = f["score"]
-        if score_f >= 8:
-            r_c, g_c, b_c = 39, 174, 96
-        elif score_f >= 5:
-            r_c, g_c, b_c = 230, 126, 34
-        else:
-            r_c, g_c, b_c = 192, 57, 43
-
+        s = clamp_score(f.get("score", 0))
+        rc, gc, bc = (39, 174, 96) if s >= 8 else ((230, 126, 34) if s >= 5 else (192, 57, 43))
         pdf.set_font("Helvetica", "B", 10)
         pdf.set_text_color(26, 35, 50)
         pdf.set_x(15)
         pdf.cell(140, 6, sanitize(f["name"]))
-        pdf.set_text_color(r_c, g_c, b_c)
-        pdf.cell(0, 6, f"{score_f}/10", ln=True)
-
-        # Bar
+        pdf.set_text_color(rc, gc, bc)
+        pdf.cell(0, 6, f"{s}/10", ln=True)
         pdf.set_fill_color(220, 220, 220)
         pdf.rect(15, pdf.get_y(), 80, 3, 'F')
-        pdf.set_fill_color(r_c, g_c, b_c)
-        pdf.rect(15, pdf.get_y(), (score_f / 10) * 80, 3, 'F')
+        pdf.set_fill_color(rc, gc, bc)
+        pdf.rect(15, pdf.get_y(), (s / 10) * 80, 3, 'F')
         pdf.ln(5)
-
         pdf.set_font("Helvetica", "", 9)
         pdf.set_text_color(100, 110, 120)
         pdf.set_x(15)
-        pdf.multi_cell(180, 5, sanitize(f["kommentar"]))
+        pdf.multi_cell(180, 5, sanitize(f.get("kommentar", "")))
         pdf.ln(3)
 
     # Quick Wins
@@ -1033,48 +766,50 @@ def generate_pdf(r):
     pdf.cell(0, 8, "Quick Wins", ln=True)
     pdf.ln(2)
 
-    prio_colors = {
-        "sofort": (192, 57, 43),
-        "kurz": (230, 126, 34),
-        "mittel": (39, 174, 96)
-    }
+    prio_colors = {"sofort": (192, 57, 43), "kurz": (230, 126, 34), "mittel": (39, 174, 96)}
     prio_labels = {"sofort": "SOFORT", "kurz": "KURZFRISTIG", "mittel": "MITTELFRISTIG"}
 
-    for w in r["quickwins"]:
-        rc, gc, bc = prio_colors.get(w["prioritaet"], (100, 100, 100))
+    for w in r.get("quickwins", []):
+        prio = str(w.get("prioritaet", "mittel")).strip()
+        if prio not in prio_colors:
+            prio = "mittel"
+        rc, gc, bc = prio_colors[prio]
         pdf.set_fill_color(rc, gc, bc)
         pdf.set_text_color(255, 255, 255)
         pdf.set_font("Helvetica", "B", 8)
         pdf.set_x(15)
-        pdf.cell(30, 6, prio_labels.get(w["prioritaet"], ""), fill=True)
+        pdf.cell(30, 6, prio_labels[prio], fill=True)
         pdf.set_font("Helvetica", "", 10)
         pdf.set_text_color(26, 35, 50)
         pdf.set_x(48)
-        pdf.multi_cell(157, 6, sanitize(w["massnahme"]))
+        pdf.multi_cell(157, 6, sanitize(str(w.get("massnahme", ""))))
         pdf.set_font("Helvetica", "I", 9)
         pdf.set_text_color(61, 122, 94)
         pdf.set_x(48)
-        pdf.cell(0, 5, sanitize("-> " + w["impact"]), ln=True)
+        pdf.cell(0, 5, sanitize("-> " + str(w.get("impact", ""))), ln=True)
         pdf.ln(2)
 
-    # Footer CTA
+    # Footer
     pdf.ln(6)
+    y = pdf.get_y()
     pdf.set_fill_color(26, 35, 50)
-    pdf.set_x(15)
-    y_start = pdf.get_y()
-    pdf.rect(15, y_start, 180, 28, 'F')
+    pdf.rect(15, y, 180, 28, 'F')
     pdf.set_font("Helvetica", "B", 11)
     pdf.set_text_color(201, 168, 76)
-    pdf.set_xy(20, y_start + 5)
+    pdf.set_xy(20, y + 5)
     pdf.cell(0, 7, "Detailberatung anfragen")
     pdf.set_font("Helvetica", "", 9)
     pdf.set_text_color(200, 210, 220)
-    pdf.set_xy(20, y_start + 13)
+    pdf.set_xy(20, y + 13)
     pdf.cell(0, 5, "kontakt@gernot-riedel.com  |  +43 676 7237811  |  gernot-riedel.com")
 
     return bytes(pdf.output())
 
-# ─── MAIN FORM ───
+
+# ══════════════════════════════════════════════════════════
+# UI — FORMULAR
+# ══════════════════════════════════════════════════════════
+
 st.markdown("### Website-Analyse starten")
 
 with st.form("geo_form"):
@@ -1088,38 +823,22 @@ with st.form("geo_form"):
     with col2:
         location = st.text_input("Ort / Region", placeholder="z.B. Zell am See, Salzburg")
         contact_email = st.text_input("Ihre E-Mail (für Report)", placeholder="name@hotel.at")
-
     website_url = st.text_input("Website-URL", placeholder="https://www.ihr-hotel.at")
     submitted = st.form_submit_button("🔍 Jetzt Website analysieren")
 
-# ─── ANALYSIS ───
+# ══════════════════════════════════════════════════════════
+# ANALYSE AUSFÜHREN
+# ══════════════════════════════════════════════════════════
+
 if submitted:
     if not hotel_name or not website_url or not contact_email:
         st.error("Bitte Betriebsname, Website-URL und E-Mail angeben.")
     else:
-        with st.spinner("🤖 KI wertet gecrawlte Inhalte aus... Das dauert ca. 30–60 Sekunden."):
-            progress = st.progress(0)
-            import time
-            for i in range(0, 60, 10):
-                time.sleep(0.3)
-                progress.progress(i)
-
-            result = run_analysis(hotel_name, location, website_url, business_type)
-
-            progress.progress(100)
-            time.sleep(0.2)
-            progress.empty()
-
+        st.session_state.anfrage_gesendet = False
+        result = run_analysis(hotel_name, location, website_url, business_type)
         if result:
-            result["hotelName"] = hotel_name
-            result["location"] = location
-            result["type"] = business_type
             result["email"] = contact_email
-            result["url"] = website_url
-            result["date"] = datetime.date.today().strftime("%d.%m.%Y")
             st.session_state.result = result
-
-            # Save lead
             st.session_state.leads.append({
                 "Betrieb": hotel_name,
                 "Ort": location,
@@ -1131,7 +850,11 @@ if submitted:
                 "Zusammenfassung": result.get("zusammenfassung", "")
             })
 
-# ─── RESULTS ───
+
+# ══════════════════════════════════════════════════════════
+# UI — ERGEBNISSE
+# ══════════════════════════════════════════════════════════
+
 if st.session_state.result:
     r = st.session_state.result
     score = r["gesamtscore"]
@@ -1140,19 +863,14 @@ if st.session_state.result:
     st.markdown(f"## 📊 Analyse: {r['hotelName']}")
     st.caption(f"{r['location']} · {r['type']} · {r['date']}")
 
-    # Score
     if score >= 40:
-        score_class = "score-excellent"
-        score_label = "Ausgezeichnet"
+        score_class, score_label = "score-excellent", "Ausgezeichnet"
     elif score >= 28:
-        score_class = "score-good"
-        score_label = "Gut"
+        score_class, score_label = "score-good", "Gut"
     elif score >= 16:
-        score_class = "score-poor"
-        score_label = "Verbesserungsbedarf"
+        score_class, score_label = "score-poor", "Verbesserungsbedarf"
     else:
-        score_class = "score-critical"
-        score_label = "Kritisch"
+        score_class, score_label = "score-critical", "Kritisch"
 
     col_score, col_summary = st.columns([1, 2])
     with col_score:
@@ -1163,105 +881,110 @@ if st.session_state.result:
             <div style="color:#c9a84c;font-weight:700;margin-top:8px;">{score_label}</div>
         </div>
         """, unsafe_allow_html=True)
-
     with col_summary:
         st.info(r.get("zusammenfassung", ""))
 
-    # Factors
+    # Faktoren
     st.markdown("### Faktor-Analyse")
     for f in r["faktoren"]:
-        s = f["score"]
+        s = clamp_score(f.get("score", 0))
         bar_color = "#27ae60" if s >= 8 else "#e67e22" if s >= 5 else "#c0392b"
         col_f1, col_f2 = st.columns([4, 1])
         with col_f1:
             st.markdown(f"**{f['name']}**")
-            st.progress(min(1.0, max(0.0, s / 10)))
-            st.caption(f["kommentar"])
+            st.progress(s / 10)
+            st.caption(f.get("kommentar", ""))
         with col_f2:
-            st.markdown(f"<div style='font-size:28px;font-weight:800;color:{bar_color};text-align:center;padding-top:8px'>{s}<span style='font-size:14px;color:#aaa'>/10</span></div>", unsafe_allow_html=True)
+            st.markdown(
+                f"<div style='font-size:28px;font-weight:800;color:{bar_color};"
+                f"text-align:center;padding-top:8px'>{s}"
+                f"<span style='font-size:14px;color:#aaa'>/10</span></div>",
+                unsafe_allow_html=True
+            )
         st.markdown("---")
 
     # Quick Wins
     st.markdown("### ⚡ Quick Wins")
-    for w in r["quickwins"]:
-        css_class = f"win-{w['prioritaet']}"
-        label = {"sofort": "🔴 SOFORT", "kurz": "🟠 KURZFRISTIG", "mittel": "🟢 MITTELFRISTIG"}.get(w["prioritaet"], "")
-        st.markdown(f"""
-        <div class="{css_class}">
-            <strong>{label}</strong> &nbsp; {w['massnahme']}<br>
-            <span style="color:#3d7a5e;font-size:13px;">→ {w['impact']}</span>
+    quickwins = r.get("quickwins", [])
+    if not quickwins:
+        st.info("Keine Quick Wins verfügbar — zu wenig Datenbasis für konkrete Empfehlungen.")
+    for w in quickwins:
+        try:
+            prio = str(w.get("prioritaet", "mittel")).lower().strip()
+            if prio not in ("sofort", "kurz", "mittel"):
+                prio = "mittel"
+            massnahme = str(w.get("massnahme", "")).strip()
+            impact = str(w.get("impact", "")).strip()
+            if not massnahme:
+                continue
+            label = {"sofort": "🔴 SOFORT", "kurz": "🟠 KURZFRISTIG", "mittel": "🟢 MITTELFRISTIG"}[prio]
+            st.markdown(f"""
+        <div class="win-{prio}">
+            <strong>{label}</strong> &nbsp; {massnahme}<br>
+            <span style="color:#3d7a5e;font-size:13px;">→ {impact}</span>
         </div>
         """, unsafe_allow_html=True)
+        except Exception:
+            continue
 
-    # ── NAP & FAQ Reporting ──
+    # NAP & FAQ
     st.markdown("### 🔍 NAP & FAQ Detailcheck")
-
     nap = r.get("nap", {})
     faq = r.get("faq", {})
-
     col_nap, col_faq = st.columns(2)
 
     with col_nap:
-        st.markdown("#### 📍 NAP-Daten (Name · Adresse · Telefon)")
-        crawl_seiten = nap.get("crawl_seiten", [])
-        if crawl_seiten:
-            st.caption(f"Gecrawlte Seiten: {', '.join(crawl_seiten)}")
-        else:
-            st.caption("Keine Seiten gecrawlt.")
+        st.markdown("#### 📍 NAP-Daten")
+        seiten = nap.get("crawl_seiten", [])
+        st.caption(f"Gecrawlte Seiten: {', '.join(seiten)}" if seiten else "Keine Seiten gecrawlt.")
 
-        telefon = nap.get("telefon")
-        email = nap.get("email")
-        adresse = nap.get("adresse")
-
-        if telefon:
-            st.success(f"✅ **Telefon gefunden:** {telefon}")
+        if nap.get("telefon"):
+            st.success(f"✅ **Telefon:** {nap['telefon']}")
         else:
             st.error("❌ **Telefon:** Nicht im gecrawlten Text gefunden.")
-            st.caption("Mögliche Ursachen: Nur in Bild/Grafik vorhanden, JavaScript-gerendert, oder tatsächlich fehlend.")
+            st.caption("Mögliche Ursachen: Bild/Grafik, JavaScript-gerendert, oder fehlend.")
 
-        if email:
-            st.success(f"✅ **E-Mail gefunden:** {email}")
+        if nap.get("email"):
+            st.success(f"✅ **E-Mail:** {nap['email']}")
         else:
             st.warning("⚠️ **E-Mail:** Nicht im gecrawlten Text gefunden.")
-            st.caption("Mögliche Ursachen: Verschleiert gegen Spam, JavaScript-gerendert, oder fehlend.")
 
-        if adresse:
-            st.success(f"✅ **Adresse gefunden:** {adresse}")
+        if nap.get("adresse"):
+            st.success(f"✅ **Adresse:** {nap['adresse']}")
         else:
             st.error("❌ **Adresse:** Nicht im gecrawlten Text gefunden.")
-            st.caption("Mögliche Ursachen: Nur auf Kontaktseite (nicht gecrawlt), in Karte/Bild, oder JavaScript-gerendert.")
+            st.caption("Mögliche Ursachen: Kontaktseite nicht gecrawlt, Karte/Bild, JavaScript.")
 
-        if not telefon and not adresse:
-            st.info("ℹ️ **Auswirkung:** Ohne lesbare NAP-Daten können lokale KI-Suchsysteme und Suchmaschinen-Crawler Betriebsinfos nicht direkt von der Website übernehmen. Externe Quellen (Google Business, Booking.com) werden dann bevorzugt — mit dem Risiko veralteter Daten.")
+        if not nap.get("telefon") and not nap.get("adresse"):
+            st.info("ℹ️ Ohne lesbare NAP-Daten sind KI-Suchsysteme auf externe Quellen angewiesen (Google Business, Booking.com) — mit Risiko veralteter Daten.")
 
     with col_faq:
         st.markdown("#### ❓ FAQ-Analyse")
         faq_gecrawlt = faq.get("faq_seite_gecrawlt", False)
         faq_anzahl = faq.get("anzahl", 0)
-        faq_quelle = faq.get("quelle")
-        faq_fragen = faq.get("fragen", [])
+        faq_quelle = faq.get("quelle", "")
 
-        if faq_gecrawlt:
-            st.caption(f"FAQ-Seite wurde gecrawlt. Quelle: {faq_quelle or 'unbekannt'}")
-        else:
-            st.caption("Keine dedizierte FAQ-Seite gefunden oder gecrawlt.")
+        st.caption(
+            f"FAQ-Seite gecrawlt. Quelle: {faq_quelle or 'unbekannt'}"
+            if faq_gecrawlt else "Keine dedizierte FAQ-Seite gefunden."
+        )
 
         if faq_anzahl > 0:
             st.success(f"✅ **{faq_anzahl} FAQ-Fragen gefunden** (Quelle: {faq_quelle})")
             with st.expander("Gefundene Fragen anzeigen"):
-                for i, frage in enumerate(faq_fragen, 1):
+                for i, frage in enumerate(faq.get("fragen", []), 1):
                     st.write(f"{i}. {frage}")
         else:
             st.error("❌ **Keine FAQ-Fragen gefunden.**")
             if faq_gecrawlt:
-                st.caption("FAQ-Seite gecrawlt, aber keine strukturierten Fragen erkannt. Mögliche Ursache: FAQ komplett JavaScript-gerendert (nicht im HTML-Quelltext).")
+                st.caption("FAQ-Seite gecrawlt, aber keine Fragen erkannt — möglicherweise JavaScript-gerendert.")
             else:
-                st.caption("Keine FAQ-Seite gefunden. Mögliche Ursache: FAQ-URL nicht in Sitemap oder Startseiten-Links enthalten.")
-            st.info("ℹ️ **Auswirkung:** Fehlende FAQs reduzieren die Wahrscheinlichkeit, in KI-generierten Antworten (z.B. ChatGPT, Perplexity) mit konkreten Informationen zu erscheinen.")
+                st.caption("Keine FAQ-Seite in Sitemap oder Links gefunden.")
+            st.info("ℹ️ Fehlende FAQs reduzieren die Wahrscheinlichkeit, in KI-generierten Antworten zu erscheinen.")
 
     st.markdown("---")
 
-    # PDF Download
+    # PDF
     st.markdown("### 📄 Report herunterladen")
     pdf_bytes = generate_pdf(r)
     filename = f"GEO_Report_{r['hotelName'].replace(' ','_')}_{r['date'].replace('.','')}.pdf"
@@ -1273,91 +996,69 @@ if st.session_state.result:
         use_container_width=True
     )
 
-    # ─── PAKET TEASER (kein Inhalt sichtbar) ───
+    # Paket Teaser
     paket = r.get("paket", {})
     if paket:
         st.markdown("---")
         st.markdown("""
-        <div style="background:linear-gradient(135deg,#1a2332,#2d4a3e);padding:28px 28px 24px;
-                    border-radius:8px;margin-bottom:8px">
-            <h3 style="color:#c9a84c;margin:0 0 12px 0">
-                📦 Ihr persönliches GEO-Optimierungspaket ist fertig
-            </h3>
+        <div style="background:linear-gradient(135deg,#1a2332,#2d4a3e);padding:28px;border-radius:8px;">
+            <h3 style="color:#c9a84c;margin:0 0 12px 0">📦 Ihr persönliches GEO-Optimierungspaket ist fertig</h3>
             <p style="color:rgba(255,255,255,0.9);margin:0 0 16px 0;font-size:15px;line-height:1.7">
-            Basierend auf dieser Analyse wurde für Ihren Betrieb ein 
-            <strong style="color:white">vollständiges Optimierungspaket</strong> erstellt —
-            mit allen Texten die Sie, ein Mitarbeiter oder Ihre Webagentur 
-            direkt in Ihre Website einbauen können.
-            </p>
+            Basierend auf dieser Analyse wurde für Ihren Betrieb ein
+            <strong style="color:white">vollständiges Optimierungspaket</strong> erstellt.</p>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px">
-                <div style="background:rgba(255,255,255,0.08);padding:10px 14px;border-radius:6px;
-                            border-left:3px solid #c9a84c">
-                    <div style="color:#c9a84c;font-size:11px;font-weight:700;letter-spacing:1px">LIEFERUNG 1</div>
-                    <div style="color:white;font-size:14px;margin-top:2px">📋 10 FAQ-Fragen + Antworten</div>
+                <div style="background:rgba(255,255,255,0.08);padding:10px 14px;border-radius:6px;border-left:3px solid #c9a84c">
+                    <div style="color:#c9a84c;font-size:11px;font-weight:700">LIEFERUNG 1</div>
+                    <div style="color:white;font-size:14px">📋 10 FAQ-Fragen + Antworten</div>
                 </div>
-                <div style="background:rgba(255,255,255,0.08);padding:10px 14px;border-radius:6px;
-                            border-left:3px solid #c9a84c">
-                    <div style="color:#c9a84c;font-size:11px;font-weight:700;letter-spacing:1px">LIEFERUNG 2</div>
-                    <div style="color:white;font-size:14px;margin-top:2px">🏷️ H1-Titel + Subheadline neu</div>
+                <div style="background:rgba(255,255,255,0.08);padding:10px 14px;border-radius:6px;border-left:3px solid #c9a84c">
+                    <div style="color:#c9a84c;font-size:11px;font-weight:700">LIEFERUNG 2</div>
+                    <div style="color:white;font-size:14px">🏷️ H1-Titel + Subheadline neu</div>
                 </div>
-                <div style="background:rgba(255,255,255,0.08);padding:10px 14px;border-radius:6px;
-                            border-left:3px solid #c9a84c">
-                    <div style="color:#c9a84c;font-size:11px;font-weight:700;letter-spacing:1px">LIEFERUNG 3</div>
-                    <div style="color:white;font-size:14px;margin-top:2px">⭐ USP-Box mit 4 Alleinstellungsmerkmalen</div>
+                <div style="background:rgba(255,255,255,0.08);padding:10px 14px;border-radius:6px;border-left:3px solid #c9a84c">
+                    <div style="color:#c9a84c;font-size:11px;font-weight:700">LIEFERUNG 3</div>
+                    <div style="color:white;font-size:14px">⭐ USP-Box mit 4 Alleinstellungsmerkmalen</div>
                 </div>
-                <div style="background:rgba(255,255,255,0.08);padding:10px 14px;border-radius:6px;
-                            border-left:3px solid #c9a84c">
-                    <div style="color:#c9a84c;font-size:11px;font-weight:700;letter-spacing:1px">LIEFERUNG 4</div>
-                    <div style="color:white;font-size:14px;margin-top:2px">🔍 20 lokale Keywords</div>
+                <div style="background:rgba(255,255,255,0.08);padding:10px 14px;border-radius:6px;border-left:3px solid #c9a84c">
+                    <div style="color:#c9a84c;font-size:11px;font-weight:700">LIEFERUNG 4</div>
+                    <div style="color:white;font-size:14px">🔍 20 lokale Keywords</div>
                 </div>
-                <div style="background:rgba(255,255,255,0.08);padding:10px 14px;border-radius:6px;
-                            border-left:3px solid #c9a84c">
-                    <div style="color:#c9a84c;font-size:11px;font-weight:700;letter-spacing:1px">LIEFERUNG 5</div>
-                    <div style="color:white;font-size:14px;margin-top:2px">📍 Google Business Profil-Text</div>
+                <div style="background:rgba(255,255,255,0.08);padding:10px 14px;border-radius:6px;border-left:3px solid #c9a84c">
+                    <div style="color:#c9a84c;font-size:11px;font-weight:700">LIEFERUNG 5</div>
+                    <div style="color:white;font-size:14px">📍 Google Business Profil-Text</div>
                 </div>
-                <div style="background:rgba(255,255,255,0.08);padding:10px 14px;border-radius:6px;
-                            border-left:3px solid #c9a84c">
-                    <div style="color:#c9a84c;font-size:11px;font-weight:700;letter-spacing:1px">LIEFERUNG 6</div>
-                    <div style="color:white;font-size:14px;margin-top:2px">🔗 3 Meta-Descriptions</div>
+                <div style="background:rgba(255,255,255,0.08);padding:10px 14px;border-radius:6px;border-left:3px solid #c9a84c">
+                    <div style="color:#c9a84c;font-size:11px;font-weight:700">LIEFERUNG 6</div>
+                    <div style="color:white;font-size:14px">🔗 3 Meta-Descriptions</div>
                 </div>
-                <div style="background:rgba(255,255,255,0.08);padding:10px 14px;border-radius:6px;
-                            border-left:3px solid #c9a84c;grid-column:span 2">
-                    <div style="color:#c9a84c;font-size:11px;font-weight:700;letter-spacing:1px">LIEFERUNG 7</div>
-                    <div style="color:white;font-size:14px;margin-top:2px">📖 "Über uns" — komplett neu geschrieben (KI-optimiert)</div>
+                <div style="background:rgba(255,255,255,0.08);padding:10px 14px;border-radius:6px;border-left:3px solid #c9a84c;grid-column:span 2">
+                    <div style="color:#c9a84c;font-size:11px;font-weight:700">LIEFERUNG 7</div>
+                    <div style="color:white;font-size:14px">📖 "Über uns" komplett neu (KI-optimiert)</div>
                 </div>
             </div>
-            <p style="color:rgba(255,255,255,0.6);margin:0;font-size:13px;font-style:italic">
-            ✉️ Alle 7 Lieferungen erhalten Sie als fertig formatiertes Dokument per E-Mail —
-            innerhalb von 24 Stunden nach Ihrer Anfrage.
-            </p>
         </div>
         """, unsafe_allow_html=True)
 
-    # CTA — Detailberatung
+    # CTA
     st.markdown("""
     <div class="cta-box">
         <h3 style="color:#c9a84c;margin:0 0 8px 0">🚀 GEO-Optimierungspaket Professional — € 149</h3>
         <p style="color:rgba(255,255,255,0.85);margin:0 0 6px 0;font-size:15px">
-        Alle 7 Lieferungen oben als fertiges Dokument — von Ihnen, einem Mitarbeiter oder Ihrer Webagentur umsetzbar:</p>
+        Alle 7 Lieferungen als fertiges Dokument:</p>
         <p style="color:rgba(255,255,255,0.75);margin:0 0 16px 0;font-size:13px">
-        ✅ 10 FAQ-Fragen &nbsp;|&nbsp; ✅ H1-Titel + Subheadline &nbsp;|&nbsp; ✅ USP-Box &nbsp;|&nbsp;
-        ✅ 20 Keywords &nbsp;|&nbsp; ✅ Google Business Text &nbsp;|&nbsp;
+        ✅ 10 FAQ-Fragen &nbsp;|&nbsp; ✅ H1-Titel &nbsp;|&nbsp; ✅ USP-Box &nbsp;|&nbsp;
+        ✅ 20 Keywords &nbsp;|&nbsp; ✅ Google Business &nbsp;|&nbsp;
         ✅ 3 Meta-Descriptions &nbsp;|&nbsp; ✅ Über uns neu
         </p>
     </div>
     """, unsafe_allow_html=True)
 
-    # Beratungsanfrage Button
-    if "anfrage_gesendet" not in st.session_state:
-        st.session_state.anfrage_gesendet = False
-
     if not st.session_state.anfrage_gesendet:
-        if st.button("📩 Ja, ich möchte das GEO-Optimierungspaket für € 149", use_container_width=True, type="primary"):
+        if st.button("📩 Ja, ich möchte das GEO-Optimierungspaket für € 149",
+                     use_container_width=True, type="primary"):
             with st.spinner("Ihre Anfrage wird verarbeitet..."):
                 try:
-                    import requests as req
                     webhook_url = st.secrets.get("ZAPIER_WEBHOOK_URL", "")
-                    
                     payload = {
                         "betrieb": r["hotelName"],
                         "ort": r["location"],
@@ -1372,46 +1073,40 @@ if st.session_state.result:
                         "produkt": "GEO-Optimierungspaket",
                         "preis": "149 EUR"
                     }
-                    
                     if webhook_url:
-                        req.post(webhook_url, json=payload, timeout=10)
-                    
+                        requests.post(webhook_url, json=payload, timeout=10)
                     st.session_state.anfrage_gesendet = True
                     st.rerun()
-                    
                 except Exception as e:
                     st.error(f"Fehler beim Senden: {e}")
     else:
-        st.success("✅ Perfekt! Ihre Anfrage ist bei Gernot Riedel eingegangen. Sie erhalten innerhalb von 24 Stunden Ihre fertigen Optimierungstexte per E-Mail.")
-        st.info("📧 Bei Fragen: kontakt@gernot-riedel.com | 📞 +43 676 7237811")
+        st.success("✅ Ihre Anfrage ist eingegangen. Sie erhalten innerhalb von 24h Ihre Optimierungstexte.")
+        st.info("📧 kontakt@gernot-riedel.com | 📞 +43 676 7237811")
 
-    # ReviewRadar Upsell
+    # Upsell
     st.markdown("""
     <div style="background:#f5f0e8;border:1px solid #e8e3da;border-left:4px solid #c9a84c;
                 padding:20px 24px;border-radius:4px;margin-top:16px">
         <h4 style="margin:0 0 8px 0;color:#1a2332">📊 Noch mehr Potenzial: ReviewRadar 2.0</h4>
         <p style="margin:0 0 8px 0;color:#4a5568;font-size:14px">
-        Verwandeln Sie Ihre Gästebewertungen in garantierten Mehrumsatz. ReviewRadar 2.0 analysiert 
-        bis zu 800 Bewertungen von Booking.com, Google, TripAdvisor & HolidayCheck — und liefert 
-        Ihnen einen klaren Aktionsplan mit ROI-Kalkulation. Einmalig, kein Abo, keine laufenden Kosten.</p>
+        Bewertungsanalyse von Booking.com, Google, TripAdvisor & HolidayCheck —
+        mit klarem Aktionsplan und ROI-Kalkulation.</p>
         <p style="margin:0;font-size:14px">
-        <strong style="color:#c9a84c">ab € 149</strong> &nbsp;—&nbsp; 
-        3 Pakete: Quick Insight € 149 | Professional € 349 | Premium € 599 &nbsp;|&nbsp; 
-        <a href="https://gernot-riedel.com/hotelbewertungen-analyse-mehr-umsatz-direktbuchungen-reviewradar/" 
+        <strong style="color:#c9a84c">ab € 149</strong> &nbsp;—&nbsp;
+        <a href="https://gernot-riedel.com/hotelbewertungen-analyse-mehr-umsatz-direktbuchungen-reviewradar/"
         target="_blank" style="color:#3d7a5e;font-weight:600">Alle Pakete & Details →</a>
         </p>
     </div>
     """, unsafe_allow_html=True)
 
-# ─── LEADS SECTION (Admin) ───
+
+# ── LEADS ADMIN ──
 st.markdown("---")
 with st.expander("📊 Gesammelte Leads anzeigen (Admin)", expanded=False):
     if st.session_state.leads:
         import pandas as pd
         df = pd.DataFrame(st.session_state.leads)
         st.dataframe(df, use_container_width=True)
-
-        # CSV Export
         csv_buffer = io.StringIO()
         df.to_csv(csv_buffer, index=False, encoding="utf-8-sig")
         st.download_button(
@@ -1424,12 +1119,12 @@ with st.expander("📊 Gesammelte Leads anzeigen (Admin)", expanded=False):
     else:
         st.info("Noch keine Leads gesammelt.")
 
-# ─── FOOTER ───
+# ── FOOTER ──
 st.markdown("""
 <div class="footer-bar">
-    <strong style="color:#c9a84c">Gernot Riedel Tourism Consulting</strong> &nbsp;|&nbsp; 
-    TÜV-zertifizierter KI-Trainer &nbsp;|&nbsp; 
-    kontakt@gernot-riedel.com &nbsp;|&nbsp; 
+    <strong style="color:#c9a84c">Gernot Riedel Tourism Consulting</strong> &nbsp;|&nbsp;
+    TÜV-zertifizierter KI-Trainer &nbsp;|&nbsp;
+    kontakt@gernot-riedel.com &nbsp;|&nbsp;
     +43 676 7237811
 </div>
 """, unsafe_allow_html=True)
