@@ -699,24 +699,33 @@ Antworte NUR als valides JSON ohne Markdown:
     client = anthropic.Anthropic(api_key=api_key)
 
     def call_api_with_retry(model, max_tokens, messages, spinner_text=""):
-        """API-Call mit bis zu 3 Retries bei OverloadedError."""
+        """API-Call mit bis zu 3 Retries bei OverloadedError. Fallback auf Haiku."""
         import time
-        for attempt in range(3):
-            try:
-                return client.messages.create(
-                    model=model,
-                    max_tokens=max_tokens,
-                    messages=messages
-                )
-            except Exception as e:
-                err_str = str(type(e).__name__)
-                if "Overloaded" in err_str and attempt < 2:
-                    wait = 15 * (attempt + 1)
-                    st.warning(f"⏳ API momentan ausgelastet — warte {wait} Sekunden und versuche erneut... (Versuch {attempt+2}/3)")
-                    time.sleep(wait)
-                else:
-                    raise
-        raise RuntimeError("API nach 3 Versuchen nicht erreichbar.")
+        fallback_model = "claude-haiku-4-5-20251001"
+        models_to_try = [model, fallback_model] if model != fallback_model else [model]
+
+        for model_attempt in models_to_try:
+            for retry in range(3):
+                try:
+                    return client.messages.create(
+                        model=model_attempt,
+                        max_tokens=max_tokens,
+                        messages=messages
+                    )
+                except Exception as e:
+                    err_str = str(type(e).__name__)
+                    if "Overloaded" in err_str and retry < 2:
+                        wait = 15 * (retry + 1)
+                        st.warning(f"⏳ API ausgelastet ({model_attempt}) — warte {wait}s... (Versuch {retry+2}/3)")
+                        time.sleep(wait)
+                    elif "Overloaded" in err_str and retry == 2:
+                        # Alle Retries für dieses Modell erschöpft → nächstes Modell
+                        if model_attempt != fallback_model:
+                            st.warning(f"⚠️ {model_attempt} nicht erreichbar — wechsle auf Fallback-Modell...")
+                        break
+                    else:
+                        raise
+        raise RuntimeError("API nach allen Versuchen nicht erreichbar. Bitte in 1-2 Minuten erneut versuchen.")
 
     def safe_json_parse(raw):
         """Robuste JSON-Extraktion aus Claude-Antwort mit mehreren Fallbacks."""
@@ -846,7 +855,14 @@ Antworte NUR als JSON:
             max_tokens=2000,
             messages=[{"role": "user", "content": analyse_prompt}]
         )
-    result = safe_json_parse(msg1.content[0].text)
+    try:
+        result = safe_json_parse(msg1.content[0].text)
+    except RuntimeError as e:
+        st.error(f"❌ {e}")
+        return None
+    except Exception:
+        st.error("❌ Analyse-Ergebnis konnte nicht verarbeitet werden. Bitte erneut versuchen.")
+        return None
 
     # ── CALL 2: Optimierungspaket (separat, mit eigenem Token-Budget) ──
     paket_prompt = f"""Du erstellst das GEO-Optimierungspaket Professional fuer diesen Betrieb.
@@ -886,16 +902,19 @@ Antworte NUR als JSON:
 
     with st.spinner("📦 Erstelle Optimierungspaket..."):
         msg2 = call_api_with_retry(
-            model="claude-opus-4-5",
+            model="claude-haiku-4-5-20251001",
             max_tokens=3000,
             messages=[{"role": "user", "content": paket_prompt}]
         )
     try:
         paket = safe_json_parse(msg2.content[0].text)
+    except RuntimeError as e:
+        st.warning(f"⚠️ Optimierungspaket nicht verfügbar: {e}")
+        paket = {}
     except Exception:
         paket = {}
     if not paket:
-        st.warning("⚠️ Optimierungspaket konnte nicht vollständig erstellt werden. Bitte erneut versuchen.")
+        st.warning("⚠️ Optimierungspaket konnte nicht erstellt werden — Analyse-Report ist trotzdem verfügbar.")
     result["paket"] = paket
     result["hotelName"] = hotel_name
     result["location"] = location
