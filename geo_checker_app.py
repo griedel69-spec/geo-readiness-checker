@@ -10,6 +10,64 @@ import requests
 from html.parser import HTMLParser
 from urllib.parse import urljoin, urlparse
 from fpdf import FPDF
+import urllib.request
+
+# ─── AI BOT CRAWLABILITY CHECK ───
+def check_ai_bot_crawlability(website_url: str) -> dict:
+    AI_BOTS = {
+        "GPTBot":          "OpenAI / ChatGPT",
+        "ClaudeBot":       "Anthropic / Claude",
+        "PerplexityBot":   "Perplexity",
+        "Google-Extended": "Google AI (Gemini)",
+        "Bytespider":      "TikTok / ByteDance",
+    }
+    parsed = urlparse(website_url)
+    robots_url = f"{parsed.scheme}://{parsed.netloc}/robots.txt"
+    results = {}
+    blocked = []
+    allowed = []
+
+    try:
+        req = urllib.request.Request(robots_url, headers={"User-Agent": "GEO-Checker/1.0"})
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            robots_text = resp.read().decode("utf-8", errors="ignore").lower()
+    except Exception:
+        return {
+            "score": 10, "robots_url": robots_url,
+            "status": "Keine robots.txt gefunden – KI-Bots nicht blockiert",
+            "details": {bot: {"name": name, "status": "✅ erlaubt"} for bot, name in AI_BOTS.items()},
+            "blocked_count": 0,
+        }
+
+    lines = robots_text.splitlines()
+    current_agents = []
+    for line in lines:
+        line = line.strip()
+        if line.startswith("user-agent:"):
+            current_agents = [line.replace("user-agent:", "").strip()]
+        elif line.startswith("disallow:"):
+            path = line.replace("disallow:", "").strip()
+            for agent in current_agents:
+                for bot_key in AI_BOTS:
+                    if bot_key.lower() in agent:
+                        if path in ["/", "/*"]:
+                            blocked.append(bot_key)
+                            results[bot_key] = {"name": AI_BOTS[bot_key], "status": "🔴 BLOCKIERT"}
+                        else:
+                            results[bot_key] = {"name": AI_BOTS[bot_key], "status": "⚠️ teilweise eingeschränkt"}
+
+    for bot_key, bot_name in AI_BOTS.items():
+        if bot_key not in results:
+            allowed.append(bot_key)
+            results[bot_key] = {"name": bot_name, "status": "✅ erlaubt"}
+
+    return {
+        "score": min(len(allowed) * 2, 10),
+        "robots_url": robots_url,
+        "status": f"{len(blocked)} von {len(AI_BOTS)} KI-Bots blockiert",
+        "details": results,
+        "blocked_count": len(blocked),
+    }
 
 # ─── PAGE CONFIG ───
 st.set_page_config(
@@ -144,7 +202,6 @@ def crawl_website(base_url):
                 parser = TextExtractor()
                 parser.feed(html)
                 text = parser.get_text()
-                # JS-FAQ Accordion Extraktion
                 faq_spans = re.findall(r'<span>([^<]{15,200}\?)</span>', html)
                 if faq_spans:
                     text += "\n\nFAQ-FRAGEN AUF DIESER SEITE:\n" + "\n".join(f"- {q}" for q in faq_spans[:30])
@@ -193,16 +250,13 @@ def crawl_website(base_url):
     pages = {}
     seen = set()
 
-    # 1. Startseite
     text, headings, links = fetch_page(base_url)
     if text:
         pages["Startseite"] = {"text": text, "headings": headings}
     seen.add(base_url)
 
-    # 2. Sitemap
     sitemap_urls = get_sitemap_urls(base_url)
 
-    # 3. FAQ-Seiten bevorzugt crawlen
     de_faq, other_faq = [], []
     for u in sitemap_urls:
         path = urlparse(u).path.lower()
@@ -225,7 +279,6 @@ def crawl_website(base_url):
             pages["FAQ-Seite"] = {"text": t, "headings": h}
             break
 
-    # 4. URL-Pool aufbauen
     url_pool = sitemap_urls if sitemap_urls else [
         urljoin(base_url, l).rstrip("/") for l in links
         if urljoin(base_url, l).startswith("http") and base_domain in urljoin(base_url, l)
@@ -241,7 +294,6 @@ def crawl_website(base_url):
         seen.add(u_clean)
     priority_list.sort(reverse=True)
 
-    # 5. Ebene 1: bis zu 10 Seiten
     level2_links = []
     for _, sub_url, sub_path in priority_list[:10]:
         name = sub_path.strip("/").split("/")[-1][:40] or sub_path.strip("/")[:40]
@@ -251,7 +303,6 @@ def crawl_website(base_url):
             if not sitemap_urls:
                 level2_links.extend(sub_links)
 
-    # 6. Ebene 2: bis zu 5 weitere Seiten (nur ohne Sitemap)
     if not sitemap_urls and len(pages) < 8:
         level2_list = []
         for link in level2_links:
@@ -267,7 +318,6 @@ def crawl_website(base_url):
             if t:
                 pages[name] = {"text": t, "headings": h}
 
-    # 7. Crawl-Status
     total_text = " ".join(d.get("text", "") for d in pages.values())
     main_ok = "Startseite" in pages and len(pages["Startseite"].get("text", "")) > 200
     total_chars = len(total_text)
@@ -294,7 +344,6 @@ def crawl_website(base_url):
 # ══════════════════════════════════════════════════════════
 
 def extract_nap(pages):
-    """Extrahiert NAP aus gecrawlten Seiten. Nur was tatsächlich im Text steht."""
     ordered = []
     for prio in ["kontakt", "contact", "impressum", "startseite"]:
         for name, data in pages.items():
@@ -326,7 +375,6 @@ def extract_nap(pages):
 
 
 def extract_faq(pages):
-    """Extrahiert FAQ-Fragen aus gecrawlten Seiten. Nur was tatsächlich im Text steht."""
     items = []
     source = None
 
@@ -392,7 +440,6 @@ def format_for_prompt(pages):
 # ══════════════════════════════════════════════════════════
 
 def call_api(client, model, max_tokens, messages):
-    """API-Call mit Retry und Haiku-Fallback bei OverloadedError."""
     fallback = "claude-haiku-4-5-20251001"
     for current_model in ([model, fallback] if model != fallback else [model]):
         for attempt in range(3):
@@ -418,16 +465,11 @@ def call_api(client, model, max_tokens, messages):
 
 
 def parse_json(raw):
-    """Robuste JSON-Extraktion aus API-Antwort."""
     text = raw.strip()
-
-    # Versuch 1: direkt
     try:
         return json.loads(text)
     except Exception:
         pass
-
-    # Versuch 2: ```json Block
     if "```" in text:
         for part in text.split("```"):
             part = part.strip()
@@ -438,8 +480,6 @@ def parse_json(raw):
                     return json.loads(part)
                 except Exception:
                     pass
-
-    # Versuch 3: { ... } extrahieren
     start, end = text.find("{"), text.rfind("}") + 1
     if start >= 0 and end > start:
         candidate = text[start:end]
@@ -447,19 +487,16 @@ def parse_json(raw):
             return json.loads(candidate)
         except Exception:
             pass
-        # Versuch 4: trailing commas + single quotes bereinigen
         candidate = re.sub(r",\s*([}\]])", r"\1", candidate)
         candidate = re.sub(r"'([^']*)'(\s*:)", r'"\1"\2', candidate)
         try:
             return json.loads(candidate)
         except Exception:
             pass
-
     return {}
 
 
 def clamp_score(raw):
-    """Score auf 0–10 (int) normalisieren — alle Formate."""
     try:
         if isinstance(raw, str):
             raw = raw.split("/")[0].strip()
@@ -484,6 +521,10 @@ def run_analysis(hotel_name, location, url, business_type):
         pages, crawl_status = crawl_website(url)
         website_content = format_for_prompt(pages)
         pages_found = crawl_status["pages_found"]
+
+    # ── BOT CHECK ──
+    with st.spinner("🤖 KI-Bot Crawlability wird geprüft..."):
+        bot_check = check_ai_bot_crawlability(url)
 
     # Geblockt
     if crawl_status["blocked"]:
@@ -511,14 +552,12 @@ def run_analysis(hotel_name, location, url, business_type):
 """, unsafe_allow_html=True)
         return None
 
-    # Eingeschränkte Datenbasis
     if crawl_status["partial"]:
         st.warning(
             f"⚠️ **Eingeschränkte Datenbasis** — {len(pages_found)} Seite(n) geladen "
             f"({', '.join(pages_found)}). Faktoren die Unterseiten benötigen können eingeschränkt sein."
         )
 
-    # ── ANALYSE-PROMPT ──
     has_faq = "FAQ-FRAGEN" in website_content or "FAQ-SEKTION" in website_content
     has_headings = "UEBERSCHRIFTEN:" in website_content
     has_nap = any(kw in website_content for kw in ["Tel", "+43", "+49", "+41", "Adresse", "Straße", "Gasse", "@"])
@@ -579,7 +618,6 @@ Antworte NUR als valides JSON (keine Kommentare, kein Markdown):
 
     client = anthropic.Anthropic(api_key=api_key)
 
-    # ── API CALL 1: Analyse ──
     with st.spinner("📊 Analysiere Website-Inhalte..."):
         try:
             msg1 = call_api(client, "claude-opus-4-5", 2000,
@@ -590,7 +628,6 @@ Antworte NUR als valides JSON (keine Kommentare, kein Markdown):
 
     result = parse_json(msg1.content[0].text)
 
-    # ── SERVERSEITIGE VALIDIERUNG ──
     if not result or "faktoren" not in result:
         st.error("❌ Analyse lieferte kein verwertbares Ergebnis. Bitte erneut versuchen.")
         return None
@@ -600,14 +637,11 @@ Antworte NUR als valides JSON (keine Kommentare, kein Markdown):
         st.error(f"❌ Analyse unvollständig ({len(faktoren)}/5 Faktoren). Bitte erneut versuchen.")
         return None
 
-    # Scores clampen — serverseitig, unabhängig von Claude-Output
     for f in faktoren:
         f["score"] = clamp_score(f.get("score", 0))
 
-    # Gesamtscore immer selbst berechnen
     result["gesamtscore"] = sum(f["score"] for f in faktoren)
 
-    # Quickwins validieren
     raw_qw = result.get("quickwins", [])
     result["quickwins"] = [
         w for w in raw_qw
@@ -617,7 +651,6 @@ Antworte NUR als valides JSON (keine Kommentare, kein Markdown):
         and str(w.get("impact", "")).strip()
     ]
 
-    # ── API CALL 2: Optimierungspaket ──
     paket_prompt = f"""Erstelle ein GEO-Optimierungspaket fuer diesen Tourismusbetrieb.
 
 Betrieb: {hotel_name} | Ort: {location} | Typ: {business_type}
@@ -655,8 +688,8 @@ Antworte NUR als valides JSON (kein Markdown):
     if not paket:
         st.warning("⚠️ Optimierungspaket konnte nicht erstellt werden — Analyse-Report ist verfügbar.")
 
-    # ── RESULT ZUSAMMENSTELLEN ──
     result["paket"] = paket
+    result["bot_check"] = bot_check
     result["hotelName"] = hotel_name
     result["location"] = location
     result["url"] = url
@@ -694,7 +727,6 @@ def generate_pdf(r):
     pdf.add_page()
     pdf.set_auto_page_break(auto=True, margin=15)
 
-    # Header
     pdf.set_fill_color(26, 35, 50)
     pdf.rect(0, 0, 210, 45, 'F')
     pdf.set_font("Helvetica", "B", 20)
@@ -710,7 +742,6 @@ def generate_pdf(r):
     pdf.set_x(15)
     pdf.cell(0, 6, sanitize(f"{r['location']} | {r['type']} | {r['date']}"), ln=True)
 
-    # Score Box
     score = r["gesamtscore"]
     pdf.set_fill_color(61, 122, 94)
     pdf.rect(158, 8, 38, 28, 'F')
@@ -723,7 +754,6 @@ def generate_pdf(r):
     pdf.cell(38, 6, "von 50 Punkten", align="C", ln=True)
     pdf.ln(18)
 
-    # Zusammenfassung
     pdf.set_fill_color(240, 237, 232)
     pdf.set_text_color(80, 80, 80)
     pdf.set_font("Helvetica", "I", 10)
@@ -731,7 +761,6 @@ def generate_pdf(r):
     pdf.multi_cell(180, 6, sanitize(r.get("zusammenfassung", "")), fill=True)
     pdf.ln(8)
 
-    # Faktoren
     pdf.set_font("Helvetica", "B", 13)
     pdf.set_text_color(26, 35, 50)
     pdf.set_x(15)
@@ -758,7 +787,6 @@ def generate_pdf(r):
         pdf.multi_cell(180, 5, sanitize(f.get("kommentar", "")))
         pdf.ln(3)
 
-    # Quick Wins
     pdf.ln(4)
     pdf.set_font("Helvetica", "B", 13)
     pdf.set_text_color(26, 35, 50)
@@ -789,7 +817,6 @@ def generate_pdf(r):
         pdf.cell(0, 5, sanitize("-> " + str(w.get("impact", ""))), ln=True)
         pdf.ln(2)
 
-    # Footer
     pdf.ln(6)
     y = pdf.get_y()
     pdf.set_fill_color(26, 35, 50)
@@ -937,24 +964,20 @@ if st.session_state.result:
         st.markdown("#### 📍 NAP-Daten")
         seiten = nap.get("crawl_seiten", [])
         st.caption(f"Gecrawlte Seiten: {', '.join(seiten)}" if seiten else "Keine Seiten gecrawlt.")
-
         if nap.get("telefon"):
             st.success(f"✅ **Telefon:** {nap['telefon']}")
         else:
             st.error("❌ **Telefon:** Nicht im gecrawlten Text gefunden.")
             st.caption("Mögliche Ursachen: Bild/Grafik, JavaScript-gerendert, oder fehlend.")
-
         if nap.get("email"):
             st.success(f"✅ **E-Mail:** {nap['email']}")
         else:
             st.warning("⚠️ **E-Mail:** Nicht im gecrawlten Text gefunden.")
-
         if nap.get("adresse"):
             st.success(f"✅ **Adresse:** {nap['adresse']}")
         else:
             st.error("❌ **Adresse:** Nicht im gecrawlten Text gefunden.")
             st.caption("Mögliche Ursachen: Kontaktseite nicht gecrawlt, Karte/Bild, JavaScript.")
-
         if not nap.get("telefon") and not nap.get("adresse"):
             st.info("ℹ️ Ohne lesbare NAP-Daten sind KI-Suchsysteme auf externe Quellen angewiesen (Google Business, Booking.com) — mit Risiko veralteter Daten.")
 
@@ -963,12 +986,10 @@ if st.session_state.result:
         faq_gecrawlt = faq.get("faq_seite_gecrawlt", False)
         faq_anzahl = faq.get("anzahl", 0)
         faq_quelle = faq.get("quelle", "")
-
         st.caption(
             f"FAQ-Seite gecrawlt. Quelle: {faq_quelle or 'unbekannt'}"
             if faq_gecrawlt else "Keine dedizierte FAQ-Seite gefunden."
         )
-
         if faq_anzahl > 0:
             st.success(f"✅ **{faq_anzahl} FAQ-Fragen gefunden** (Quelle: {faq_quelle})")
             with st.expander("Gefundene Fragen anzeigen"):
@@ -981,6 +1002,34 @@ if st.session_state.result:
             else:
                 st.caption("Keine FAQ-Seite in Sitemap oder Links gefunden.")
             st.info("ℹ️ Fehlende FAQs reduzieren die Wahrscheinlichkeit, in KI-generierten Antworten zu erscheinen.")
+
+    # ── KI-BOT CRAWLABILITY ──
+    st.markdown("---")
+    st.markdown("### 🤖 KI-Bot Crawlability")
+    bot_check = r.get("bot_check", {})
+    bot_score = bot_check.get("score", 0)
+    bot_col1, bot_col2 = st.columns([3, 1])
+    with bot_col1:
+        st.progress(bot_score / 10)
+        st.caption(f"Geprüfte robots.txt: {bot_check.get('robots_url', '')}")
+    with bot_col2:
+        bot_color = "#27ae60" if bot_score >= 8 else "#e67e22" if bot_score >= 4 else "#c0392b"
+        st.markdown(
+            f"<div style='font-size:28px;font-weight:800;color:{bot_color};"
+            f"text-align:center'>{bot_score}"
+            f"<span style='font-size:14px;color:#aaa'>/10</span></div>",
+            unsafe_allow_html=True
+        )
+    for bot_key, info in bot_check.get("details", {}).items():
+        st.write(f"{info['status']} &nbsp; **{info['name']}** `{bot_key}`")
+    if bot_check.get("blocked_count", 0) > 0:
+        st.error(
+            f"⚠️ **{bot_check['blocked_count']} KI-Bot(s) blockiert!** "
+            f"ChatGPT, Claude oder Perplexity können diese Website nicht lesen. "
+            f"Das GEO-Optimierungspaket enthält den fertigen robots.txt-Fix."
+        )
+    else:
+        st.success("✅ Alle wichtigen KI-Bots haben Zugriff auf diese Website.")
 
     st.markdown("---")
 
