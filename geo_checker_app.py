@@ -121,6 +121,8 @@ if "result" not in st.session_state:
     st.session_state.result = None
 if "anfrage_gesendet" not in st.session_state:
     st.session_state.anfrage_gesendet = False
+if "admin_authenticated" not in st.session_state:
+    st.session_state.admin_authenticated = False
 
 
 # ══════════════════════════════════════════════════════════
@@ -128,8 +130,6 @@ if "anfrage_gesendet" not in st.session_state:
 # ══════════════════════════════════════════════════════════
 
 def crawl_website(base_url):
-    """Crawlt Hotel-Website: Sitemap → FAQ → Unterseiten (2 Ebenen)."""
-
     class TextExtractor(HTMLParser):
         def __init__(self):
             super().__init__()
@@ -516,38 +516,20 @@ def run_analysis(hotel_name, location, url, business_type):
         st.error("❌ API-Key nicht konfiguriert (ANTHROPIC_API_KEY in Streamlit Secrets fehlt).")
         return None
 
-    # ── CRAWLING ──
     with st.spinner("🔍 Website wird gecrawlt..."):
         pages, crawl_status = crawl_website(url)
         website_content = format_for_prompt(pages)
         pages_found = crawl_status["pages_found"]
 
-    # ── BOT CHECK ──
     with st.spinner("🤖 KI-Bot Crawlability wird geprüft..."):
         bot_check = check_ai_bot_crawlability(url)
 
-    # Geblockt
     if crawl_status["blocked"]:
         st.error("❌ **Analyse nicht möglich — Website blockiert automatische Zugriffe**")
         st.markdown(f"""
 <div style="background:#1a1a2e;border:2px solid #e74c3c;border-radius:12px;padding:24px;margin:16px 0;">
     <h3 style="color:#e74c3c;margin-top:0;">🚫 Server-Blockierung erkannt</h3>
-    <p style="color:#ecf0f1;">Die Website <strong>{url}</strong> blockiert automatische Zugriffe (Bot-Schutz aktiv).<br>
-    Eine GEO-Readiness-Analyse ist ohne lesbare Website-Inhalte nicht möglich.</p>
-    <hr style="border-color:#444;">
-    <p style="color:#ecf0f1;font-size:14px;">
-    Aktuelle Website-Inhalte (Angebote, FAQs, USPs) können von Crawlern nicht gelesen werden.<br>
-    Suchmaschinen-Crawler erhalten möglicherweise keinen Zugriff auf aktuelle Seiteninhalte.<br>
-    Dies ist ein technisches Problem unabhängig von der inhaltlichen Qualität der Website.
-    </p>
-    <h4 style="color:#27ae60;">💡 Empfohlener Kontakttext:</h4>
-    <em style="color:#bdc3c7;font-size:13px;">
-    "Guten Tag, bei einer technischen Überprüfung Ihrer Website haben wir festgestellt,
-    dass der Server von {hotel_name} automatische Zugriffe blockiert.
-    Das bedeutet: Aktuelle Inhalte Ihrer Website können von Suchmaschinen-Crawlern
-    nicht zuverlässig gelesen werden.
-    Gerne zeige ich Ihnen in einem kurzen Gespräch, was das konkret bedeutet."
-    </em>
+    <p style="color:#ecf0f1;">Die Website <strong>{url}</strong> blockiert automatische Zugriffe (Bot-Schutz aktiv).</p>
 </div>
 """, unsafe_allow_html=True)
         return None
@@ -555,7 +537,7 @@ def run_analysis(hotel_name, location, url, business_type):
     if crawl_status["partial"]:
         st.warning(
             f"⚠️ **Eingeschränkte Datenbasis** — {len(pages_found)} Seite(n) geladen "
-            f"({', '.join(pages_found)}). Faktoren die Unterseiten benötigen können eingeschränkt sein."
+            f"({', '.join(pages_found)})."
         )
 
     has_faq = "FAQ-FRAGEN" in website_content or "FAQ-SEKTION" in website_content
@@ -591,11 +573,6 @@ Bewerte 5 Faktoren (Score 0-10, ganze Zahl):
 3. Lokale Keywords: Region, Bundesland, Aktivitaeten, Saison?
 4. NAP-Konsistenz: Name, Adresse, Telefon vollstaendig & einheitlich?
 5. USP-Klarheit: Echte Alleinstellungsmerkmale kommuniziert?
-
-USP-Kategorien:
-- Lage-USP (direkter See, einzigartiger Ausblick) = USP fuer alle Kategorien
-- Infrastruktur: Appartement mit Sauna = USP; 3-4 Sterne Hotel mit Sauna = Standard
-- Thematisch: Kinderbetreuung, Fuehrungen, Sportprogramm = starker USP
 
 Antworte NUR als valides JSON (keine Kommentare, kein Markdown):
 {{
@@ -684,9 +661,6 @@ Antworte NUR als valides JSON (kein Markdown):
             paket = {}
         except Exception:
             paket = {}
-
-    if not paket:
-        st.warning("⚠️ Optimierungspaket konnte nicht erstellt werden — Analyse-Report ist verfügbar.")
 
     result["paket"] = paket
     result["bot_check"] = bot_check
@@ -911,7 +885,6 @@ if st.session_state.result:
     with col_summary:
         st.info(r.get("zusammenfassung", ""))
 
-    # Faktoren
     st.markdown("### Faktor-Analyse")
     for f in r["faktoren"]:
         s = clamp_score(f.get("score", 0))
@@ -930,7 +903,6 @@ if st.session_state.result:
             )
         st.markdown("---")
 
-    # Quick Wins
     st.markdown("### ⚡ Quick Wins")
     quickwins = r.get("quickwins", [])
     if not quickwins:
@@ -954,7 +926,6 @@ if st.session_state.result:
         except Exception:
             continue
 
-    # NAP & FAQ
     st.markdown("### 🔍 NAP & FAQ Detailcheck")
     nap = r.get("nap", {})
     faq = r.get("faq", {})
@@ -978,8 +949,6 @@ if st.session_state.result:
         else:
             st.error("❌ **Adresse:** Nicht im gecrawlten Text gefunden.")
             st.caption("Mögliche Ursachen: Kontaktseite nicht gecrawlt, Karte/Bild, JavaScript.")
-        if not nap.get("telefon") and not nap.get("adresse"):
-            st.info("ℹ️ Ohne lesbare NAP-Daten sind KI-Suchsysteme auf externe Quellen angewiesen (Google Business, Booking.com) — mit Risiko veralteter Daten.")
 
     with col_faq:
         st.markdown("#### ❓ FAQ-Analyse")
@@ -997,13 +966,7 @@ if st.session_state.result:
                     st.write(f"{i}. {frage}")
         else:
             st.error("❌ **Keine FAQ-Fragen gefunden.**")
-            if faq_gecrawlt:
-                st.caption("FAQ-Seite gecrawlt, aber keine Fragen erkannt — möglicherweise JavaScript-gerendert.")
-            else:
-                st.caption("Keine FAQ-Seite in Sitemap oder Links gefunden.")
-            st.info("ℹ️ Fehlende FAQs reduzieren die Wahrscheinlichkeit, in KI-generierten Antworten zu erscheinen.")
 
-    # ── KI-BOT CRAWLABILITY ──
     st.markdown("---")
     st.markdown("### 🤖 KI-Bot Crawlability")
     bot_check = r.get("bot_check", {})
@@ -1023,17 +986,11 @@ if st.session_state.result:
     for bot_key, info in bot_check.get("details", {}).items():
         st.write(f"{info['status']} &nbsp; **{info['name']}** `{bot_key}`")
     if bot_check.get("blocked_count", 0) > 0:
-        st.error(
-            f"⚠️ **{bot_check['blocked_count']} KI-Bot(s) blockiert!** "
-            f"ChatGPT, Claude oder Perplexity können diese Website nicht lesen. "
-            f"Das GEO-Optimierungspaket enthält den fertigen robots.txt-Fix."
-        )
+        st.error(f"⚠️ **{bot_check['blocked_count']} KI-Bot(s) blockiert!**")
     else:
         st.success("✅ Alle wichtigen KI-Bots haben Zugriff auf diese Website.")
 
     st.markdown("---")
-
-    # PDF
     st.markdown("### 📄 Report herunterladen")
     pdf_bytes = generate_pdf(r)
     filename = f"GEO_Report_{r['hotelName'].replace(' ','_')}_{r['date'].replace('.','')}.pdf"
@@ -1045,7 +1002,6 @@ if st.session_state.result:
         use_container_width=True
     )
 
-    # Paket Teaser
     paket = r.get("paket", {})
     if paket:
         st.markdown("---")
@@ -1088,7 +1044,6 @@ if st.session_state.result:
         </div>
         """, unsafe_allow_html=True)
 
-    # CTA
     st.markdown("""
     <div class="cta-box">
         <h3 style="color:#c9a84c;margin:0 0 8px 0">🚀 GEO-Optimierungspaket Professional — € 149</h3>
@@ -1132,7 +1087,6 @@ if st.session_state.result:
         st.success("✅ Ihre Anfrage ist eingegangen. Sie erhalten innerhalb von 24h Ihre Optimierungstexte.")
         st.info("📧 kontakt@gernot-riedel.com | 📞 +43 676 7237811")
 
-    # Upsell
     st.markdown("""
     <div style="background:#f5f0e8;border:1px solid #e8e3da;border-left:4px solid #c9a84c;
                 padding:20px 24px;border-radius:4px;margin-top:16px">
@@ -1149,24 +1103,57 @@ if st.session_state.result:
     """, unsafe_allow_html=True)
 
 
-# ── LEADS ADMIN ──
+# ══════════════════════════════════════════════════════════
+# ADMIN-BEREICH MIT PASSWORTSCHUTZ
+# ══════════════════════════════════════════════════════════
+
 st.markdown("---")
-with st.expander("📊 Gesammelte Leads anzeigen (Admin)", expanded=False):
-    if st.session_state.leads:
-        import pandas as pd
-        df = pd.DataFrame(st.session_state.leads)
-        st.dataframe(df, use_container_width=True)
-        csv_buffer = io.StringIO()
-        df.to_csv(csv_buffer, index=False, encoding="utf-8-sig")
-        st.download_button(
-            label="📥 Leads als CSV exportieren",
-            data=csv_buffer.getvalue().encode("utf-8-sig"),
-            file_name=f"geo_leads_{datetime.date.today()}.csv",
-            mime="text/csv",
-            use_container_width=True
+with st.expander("🔒 Admin-Bereich", expanded=False):
+    if not st.session_state.admin_authenticated:
+        st.markdown("**Zugang nur für Administratoren**")
+        admin_pw = st.text_input(
+            "Passwort",
+            type="password",
+            placeholder="Admin-Passwort eingeben...",
+            key="admin_pw_input"
         )
+        if st.button("Anmelden", key="admin_login_btn"):
+            try:
+                correct_pw = st.secrets["ADMIN_PASSWORD"]
+            except Exception:
+                st.error("❌ ADMIN_PASSWORD nicht in Streamlit Secrets konfiguriert.")
+                st.stop()
+            if admin_pw == correct_pw:
+                st.session_state.admin_authenticated = True
+                st.rerun()
+            else:
+                st.error("❌ Falsches Passwort.")
     else:
-        st.info("Noch keine Leads gesammelt.")
+        col_head, col_logout = st.columns([4, 1])
+        with col_head:
+            st.success("✅ Admin-Zugang aktiv")
+        with col_logout:
+            if st.button("Abmelden", key="admin_logout_btn"):
+                st.session_state.admin_authenticated = False
+                st.rerun()
+
+        st.markdown("### 📊 Gesammelte Leads")
+        if st.session_state.leads:
+            import pandas as pd
+            df = pd.DataFrame(st.session_state.leads)
+            st.dataframe(df, use_container_width=True)
+            csv_buffer = io.StringIO()
+            df.to_csv(csv_buffer, index=False, encoding="utf-8-sig")
+            st.download_button(
+                label="📥 Leads als CSV exportieren",
+                data=csv_buffer.getvalue().encode("utf-8-sig"),
+                file_name=f"geo_leads_{datetime.date.today()}.csv",
+                mime="text/csv",
+                use_container_width=True
+            )
+        else:
+            st.info("Noch keine Leads gesammelt.")
+
 
 # ── FOOTER ──
 st.markdown("""
