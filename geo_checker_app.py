@@ -13,7 +13,14 @@ import re
 import os
 import anthropic
 from datetime import datetime
-from fpdf import FPDF
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import ParagraphStyle
+from reportlab.lib.colors import HexColor, white
+from reportlab.lib.units import mm
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, KeepTogether
+from reportlab.lib.enums import TA_LEFT
+from reportlab.pdfgen import canvas as pdfcanvas
+import io
 
 # ─── PAGE CONFIG ──────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -642,203 +649,285 @@ Antworte NUR mit diesem JSON (kein Text davor/danach):
 
 # ─── PDF EXPORT ───────────────────────────────────────────────────────────────
 
-def generate_pdf(betrieb, ort, url, typ, checks, ai_result, score_passed, score_total):
-    """Generates a branded PDF report of the GEO analysis."""
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_auto_page_break(auto=True, margin=15)
+def generate_pdf(betrieb, ort, url, typ, checks, ai_result, score_passed, score_total, email):
+    """Branded PDF report using reportlab — full Unicode/UTF-8 support."""
 
-    # ── Header ──
-    pdf.set_fill_color(13, 98, 72)  # Dark Green #0d6248
-    pdf.rect(0, 0, 210, 40, 'F')
-    pdf.set_text_color(255, 255, 255)
-    pdf.set_font("Helvetica", "B", 20)
-    pdf.set_xy(10, 8)
-    pdf.cell(0, 10, "GEO-Readiness Checker", ln=True)
-    pdf.set_font("Helvetica", "", 11)
-    pdf.set_xy(10, 20)
-    pdf.cell(0, 7, f"Analyse fuer: {betrieb} | {ort}", ln=True)
-    pdf.set_font("Helvetica", "", 9)
-    pdf.set_xy(10, 29)
-    pdf.cell(0, 6, f"gernot-riedel.com | kontakt@gernot-riedel.com | +43 676 7237811", ln=True)
+    # Colors
+    C_GREEN = HexColor('#0d6248')
+    C_ORANGE = HexColor('#f4a261')
+    C_LIGHT_GREEN = HexColor('#e8f5f0')
+    C_NEAR_BLACK = HexColor('#2b2b27')
+    C_GREY = HexColor('#888888')
+    C_LIGHT_GREY = HexColor('#f8f9fa')
+    C_RED = HexColor('#cc3333')
+    C_WARN = HexColor('#856404')
+    C_WARN_BG = HexColor('#fffdf7')
 
-    # ── Date & URL ──
-    pdf.set_text_color(44, 44, 39)
-    pdf.set_xy(10, 46)
-    pdf.set_font("Helvetica", "", 9)
-    pdf.set_text_color(130, 130, 130)
-    pdf.cell(0, 5, f"Erstellt am: {datetime.now().strftime('%d.%m.%Y um %H:%M')} Uhr  |  Website: {url}  |  Typ: {typ}", ln=True)
-    pdf.ln(3)
+    buf = io.BytesIO()
+
+    class BrandedCanvas(pdfcanvas.Canvas):
+        def __init__(self, filename, **kwargs):
+            pdfcanvas.Canvas.__init__(self, filename, **kwargs)
+            self._saved_page_states = []
+        def showPage(self):
+            self._saved_page_states.append(dict(self.__dict__))
+            self._startPage()
+        def save(self):
+            for state in self._saved_page_states:
+                self.__dict__.update(state)
+                self._draw_chrome()
+                pdfcanvas.Canvas.showPage(self)
+            pdfcanvas.Canvas.save(self)
+        def _draw_chrome(self):
+            # Header
+            self.setFillColor(C_GREEN)
+            self.rect(0, A4[1]-28*mm, A4[0], 28*mm, fill=1, stroke=0)
+            self.setFillColor(white)
+            self.setFont("Helvetica-Bold", 16)
+            self.drawString(15*mm, A4[1]-14*mm, "GEO-Readiness Checker")
+            self.setFont("Helvetica", 9)
+            betrieb_safe = betrieb[:40]
+            self.drawString(15*mm, A4[1]-21*mm, f"Analyse: {betrieb_safe} | {ort[:30]} | {datetime.now().strftime('%d.%m.%Y')}")
+            self.setFillColor(C_ORANGE)
+            self.setFont("Helvetica", 8)
+            self.drawRightString(A4[0]-15*mm, A4[1]-14*mm, "gernot-riedel.com")
+            self.drawRightString(A4[0]-15*mm, A4[1]-21*mm, "kontakt@gernot-riedel.com")
+            # Footer
+            self.setFillColor(C_GREEN)
+            self.rect(0, 0, A4[0], 13*mm, fill=1, stroke=0)
+            self.setFillColor(white)
+            self.setFont("Helvetica", 7)
+            self.drawString(15*mm, 8*mm, "Gernot Riedel Tourism Consulting  |  gernot-riedel.com  |  +43 676 7237811  |  #GernotGoesAI #GernotGoesKI")
+            self.drawRightString(A4[0]-15*mm, 8*mm, "Technische Checks = verifizierte Messwerte")
+            self.setFillColor(C_ORANGE)
+            self.setFont("Helvetica-Oblique", 7)
+            self.drawString(15*mm, 3.5*mm, "KI-Einschaetzungen sind Ergaenzungen, keine Messwerte.")
+
+    doc = SimpleDocTemplate(
+        buf, pagesize=A4,
+        leftMargin=15*mm, rightMargin=15*mm,
+        topMargin=33*mm, bottomMargin=19*mm,
+        canvasmaker=BrandedCanvas
+    )
+
+    def S(name, **kw):
+        return ParagraphStyle(name, **kw)
+
+    story = []
+
+    def section_header(title, color=None):
+        bg = color or C_GREEN
+        tbl = Table([[Paragraph(f"<b>{title}</b>",
+            S('sh', fontName='Helvetica-Bold', fontSize=11, textColor=white, leading=14))]],
+            colWidths=[180*mm])
+        tbl.setStyle(TableStyle([
+            ('BACKGROUND', (0,0), (-1,-1), bg),
+            ('TOPPADDING', (0,0), (-1,-1), 5),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 5),
+            ('LEFTPADDING', (0,0), (-1,-1), 8),
+        ]))
+        story.append(KeepTogether([tbl, Spacer(1, 2*mm)]))
+
+    def info_box(text, bg_color, border_color):
+        tbl = Table([[Paragraph(text, S('ib', fontName='Helvetica', fontSize=9,
+                     textColor=C_NEAR_BLACK, leading=13))]],
+                    colWidths=[180*mm])
+        tbl.setStyle(TableStyle([
+            ('BACKGROUND', (0,0), (-1,-1), bg_color),
+            ('BOX', (0,0), (-1,-1), 1, border_color),
+            ('TOPPADDING', (0,0), (-1,-1), 5),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 5),
+            ('LEFTPADDING', (0,0), (-1,-1), 8),
+        ]))
+        story.append(tbl)
+        story.append(Spacer(1, 3*mm))
 
     # ── Score Box ──
-    verdict = "Gut aufgestellt" if score_passed/max(score_total,1) >= 0.8 else "Verbesserungspotenzial" if score_passed/max(score_total,1) >= 0.55 else "Handlungsbedarf"
-    pdf.set_fill_color(232, 245, 240)
-    pdf.set_draw_color(13, 98, 72)
-    pdf.set_line_width(0.5)
-    pdf.rect(10, pdf.get_y(), 190, 18, 'FD')
-    pdf.set_xy(10, pdf.get_y() + 3)
-    pdf.set_font("Helvetica", "B", 14)
-    pdf.set_text_color(13, 98, 72)
-    pdf.cell(0, 6, f"Technische Checks: {score_passed}/{score_total} bestanden  —  {verdict}", ln=True)
-    pdf.set_xy(10, pdf.get_y())
-    pdf.set_font("Helvetica", "I", 8)
-    pdf.set_text_color(100, 100, 100)
-    pdf.cell(0, 4, "Verifizierte Messwerte — reproduzierbar und nachvollziehbar", ln=True)
-    pdf.ln(5)
+    score_pct = score_passed / max(score_total, 1)
+    if score_pct >= 0.8:
+        verdict, v_color = "Gut aufgestellt", C_GREEN
+    elif score_pct >= 0.55:
+        verdict, v_color = "Verbesserungspotenzial", C_ORANGE
+    else:
+        verdict, v_color = "Handlungsbedarf", C_RED
 
-    # ── Section helper ──
-    def section_title(title):
-        pdf.set_fill_color(13, 98, 72)
-        pdf.set_text_color(255, 255, 255)
-        pdf.set_font("Helvetica", "B", 11)
-        pdf.cell(0, 8, f"  {title}", ln=True, fill=True)
-        pdf.set_text_color(44, 44, 39)
-        pdf.ln(2)
+    score_tbl = Table([[
+        Paragraph(f"<b>{score_passed}/{score_total}</b>",
+                  S('sc', fontName='Helvetica-Bold', fontSize=26, textColor=C_GREEN, leading=30)),
+        [Paragraph(f"<b>Technische Checks bestanden</b>",
+                   S('sv', fontName='Helvetica-Bold', fontSize=12, textColor=C_NEAR_BLACK, leading=15)),
+         Spacer(1, 2*mm),
+         Paragraph(f"<b>{verdict}</b>",
+                   S('sv2', fontName='Helvetica-Bold', fontSize=10, textColor=v_color, leading=12)),
+         Spacer(1, 2*mm),
+         Paragraph("Verifizierte Messwerte — reproduzierbar und nachvollziehbar",
+                   S('sv3', fontName='Helvetica-Oblique', fontSize=8, textColor=C_GREY, leading=10))]
+    ]], colWidths=[30*mm, 150*mm])
+    score_tbl.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,-1), C_LIGHT_GREEN),
+        ('BOX', (0,0), (-1,-1), 1, C_GREEN),
+        ('TOPPADDING', (0,0), (-1,-1), 7),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 7),
+        ('LEFTPADDING', (0,0), (-1,-1), 8),
+        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+    ]))
+    story.append(score_tbl)
+    story.append(Spacer(1, 5*mm))
 
-    def check_row(icon, name, detail, badge):
-        pdf.set_font("Helvetica", "B", 9)
-        pdf.set_text_color(44, 44, 39)
-        safe_name = name.encode('latin-1', 'replace').decode('latin-1')
-        pdf.cell(8, 6, icon)
-        pdf.cell(60, 6, safe_name)
-        pdf.set_font("Helvetica", "I", 8)
-        pdf.set_text_color(100, 100, 100)
-        pdf.cell(25, 6, f"[{badge}]")
-        pdf.set_font("Helvetica", "", 8)
-        safe_detail = detail[:90].encode('latin-1', 'replace').decode('latin-1')
-        pdf.cell(0, 6, safe_detail, ln=True)
-        pdf.set_text_color(44, 44, 39)
+    # ── Robots.txt highlight ──
+    robots = checks.get('robots', {})
+    if robots.get('exists'):
+        blocked = robots.get('detail_blocked', [])
+        if blocked:
+            bot_str = ', '.join(blocked)
+            info_box(f"<b>KI-Bots blockiert — Sofortiger Handlungsbedarf!</b><br/>"
+                     f"Folgende KI-Systeme koennen diese Website NICHT lesen: {bot_str}",
+                     HexColor('#fff0f0'), C_RED)
+        else:
+            info_box("<b>Alle KI-Bots haben Zugang</b><br/>"
+                     "robots.txt laesst ChatGPT, Claude, Perplexity &amp; Co. zu.",
+                     C_LIGHT_GREEN, C_GREEN)
 
     # ── Technische Checkliste ──
-    section_title("Technische Checkliste")
+    section_header("Technische Checkliste")
     check_order = ['https', 'load_time', 'title', 'meta_desc', 'viewport',
                    'lang', 'canonical', 'schema', 'robots', 'sitemap']
+    rows = []
     for key in check_order:
         chk = checks.get(key, {})
         if not chk:
             continue
         if chk.get('is_robots'):
-            blocked = chk.get('detail_blocked', [])
-            icon = "OK" if chk.get('pass') else ("??" if not chk.get('exists') else "!!")
-            detail = "Alle KI-Bots erlaubt" if chk.get('pass') else f"Blockiert: {', '.join(blocked)}" if blocked else "robots.txt fehlt"
+            blocked_list = chk.get('detail_blocked', [])
+            p = chk.get('pass')
+            icon = "OK" if p else ("??" if not chk.get('exists') else "!!")
+            detail = "Alle KI-Bots erlaubt" if p else (f"Blockiert: {', '.join(blocked_list)}" if blocked_list else "Fehlt")
+            bg = C_LIGHT_GREEN if p else HexColor('#fff0f0')
         else:
             p = chk.get('pass')
-            icon = "OK" if p else ("??" if p is None else "!!")
-            detail = chk.get('detail', '')
-        check_row(icon, chk.get('name', key), detail, "Gemessen")
-    pdf.ln(4)
+            warn = chk.get('warn', False)
+            icon = "OK" if (p and not warn) else ("~" if warn or p is None else "!!")
+            detail = chk.get('detail', '')[:100]
+            bg = C_LIGHT_GREEN if (p and not warn) else (HexColor('#fff8f0') if warn or p is None else HexColor('#fff0f0'))
 
-    # ── Robots.txt Detail ──
-    robots = checks.get('robots', {})
-    if robots.get('exists'):
-        blocked = robots.get('detail_blocked', [])
-        if blocked:
-            section_title("!! KI-Bots blockiert — Sofortiger Handlungsbedarf")
-            pdf.set_font("Helvetica", "", 9)
-            pdf.set_text_color(180, 0, 0)
-            bot_str = ', '.join(blocked).encode('latin-1', 'replace').decode('latin-1')
-            pdf.multi_cell(0, 6, f"Folgende KI-Systeme koennen diese Website laut robots.txt NICHT lesen: {bot_str}")
-            pdf.set_text_color(44, 44, 39)
-            pdf.ln(3)
-        else:
-            section_title("KI-Bot-Zugang (robots.txt)")
-            pdf.set_font("Helvetica", "", 9)
-            pdf.set_text_color(13, 98, 72)
-            pdf.cell(0, 6, "Alle KI-Bots (ChatGPT, Claude, Perplexity etc.) haben Zugang.", ln=True)
-            pdf.set_text_color(44, 44, 39)
-            pdf.ln(3)
+        icon_color = '#0d6248' if icon == 'OK' else ('#f4a261' if icon == '~' else '#cc3333')
+        rows.append([
+            Paragraph(f"<b><font color='{icon_color}'>{icon}</font></b>",
+                      S('ic', fontName='Helvetica-Bold', fontSize=9, leading=13)),
+            Paragraph(f"<b>{chk.get('name', key)}</b><br/>"
+                      f"<font size='7.5' color='#888888'>{detail}</font>",
+                      S('cn', fontName='Helvetica', fontSize=8.5, textColor=C_NEAR_BLACK, leading=12)),
+            Paragraph("<font size='7' color='#0d6248'>● Gemessen</font>",
+                      S('bd', fontName='Helvetica', fontSize=7, leading=10)),
+            bg
+        ])
+
+    for row in rows:
+        bg_color = row.pop()
+        tbl = Table([row], colWidths=[12*mm, 140*mm, 28*mm])
+        tbl.setStyle(TableStyle([
+            ('BACKGROUND', (0,0), (-1,-1), bg_color),
+            ('TOPPADDING', (0,0), (-1,-1), 4),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+            ('LEFTPADDING', (0,0), (-1,-1), 5),
+            ('VALIGN', (0,0), (-1,-1), 'TOP'),
+            ('LINEBELOW', (0,0), (-1,-1), 0.3, HexColor('#dddddd')),
+        ]))
+        story.append(tbl)
+
+    story.append(Spacer(1, 5*mm))
 
     # ── KI-Analyse ──
     if ai_result:
-        section_title("Inhaltliche KI-Analyse  [KI-Einschaetzung]")
-        pdf.set_font("Helvetica", "I", 8)
-        pdf.set_text_color(130, 100, 0)
-        pdf.cell(0, 5, "Diese Bewertungen basieren auf Claude's Analyse des Website-Textes — keine Messwerte.", ln=True)
-        pdf.set_text_color(44, 44, 39)
-        pdf.ln(2)
+        section_header("Inhaltliche KI-Analyse", color=HexColor('#856404'))
+        info_box("KI-Einschaetzung — Diese Bewertungen basieren auf der Analyse des Website-Textes. "
+                 "Sie ergaenzen die technischen Checks, sind aber keine Messwerte.",
+                 C_WARN_BG, C_ORANGE)
 
         text_bew = ai_result.get('text_bewertung', {})
-        labels = {'usp_klarheit': 'USP-Klarheit', 'lokale_signale': 'Lokale Signale',
-                  'zielgruppen_klarheit': 'Zielgruppen-Klarheit', 'faq_potential': 'FAQ-Potenzial'}
-        for k, label in labels.items():
+        labels_order = [('usp_klarheit', 'USP-Klarheit'), ('lokale_signale', 'Lokale Signale'),
+                        ('zielgruppen_klarheit', 'Zielgruppen-Klarheit'), ('faq_potential', 'FAQ-Potenzial')]
+        for k, label in labels_order:
             item = text_bew.get(k, {})
-            score = item.get('score', 0)
-            kommentar = item.get('kommentar', '')
-            bar = ("+" * score) + ("-" * (10 - score))
-            pdf.set_font("Helvetica", "B", 9)
-            safe_label = f"{label} — {score}/10  [{bar}]"
-            pdf.cell(0, 6, safe_label.encode('latin-1', 'replace').decode('latin-1'), ln=True)
-            pdf.set_font("Helvetica", "", 8)
-            pdf.set_text_color(80, 80, 80)
-            safe_k = kommentar[:120].encode('latin-1', 'replace').decode('latin-1')
-            pdf.multi_cell(0, 5, safe_k)
-            pdf.set_text_color(44, 44, 39)
-            pdf.ln(1)
+            sc = item.get('score', 0)
+            kommentar = item.get('kommentar', '')[:120]
+            bar_f = "+" * sc + "-" * (10 - sc)
+            icon = "OK" if sc >= 7 else ("~" if sc >= 4 else "!!")
+            icon_c = '#0d6248' if sc >= 7 else ('#f4a261' if sc >= 4 else '#cc3333')
+            bg = C_LIGHT_GREEN if sc >= 7 else (HexColor('#fff8f0') if sc >= 4 else HexColor('#fff0f0'))
+            row = [
+                Paragraph(f"<b><font color='{icon_c}'>{icon}</font></b>",
+                          S('ki', fontName='Helvetica-Bold', fontSize=9, leading=13)),
+                Paragraph(f"<b>{label}</b> — {sc}/10  <font face='Courier' size='7'>[{bar_f}]</font><br/>"
+                          f"<font size='7.5' color='#888888'>{kommentar}</font>",
+                          S('kb', fontName='Helvetica', fontSize=8.5, textColor=C_NEAR_BLACK, leading=12)),
+                Paragraph("<font size='7' color='#856404'>● KI-Einschaetzung</font>",
+                          S('kib', fontName='Helvetica', fontSize=7, leading=10)),
+            ]
+            tbl = Table([row], colWidths=[12*mm, 140*mm, 28*mm])
+            tbl.setStyle(TableStyle([
+                ('BACKGROUND', (0,0), (-1,-1), bg),
+                ('TOPPADDING', (0,0), (-1,-1), 4),
+                ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+                ('LEFTPADDING', (0,0), (-1,-1), 5),
+                ('VALIGN', (0,0), (-1,-1), 'TOP'),
+                ('LINEBELOW', (0,0), (-1,-1), 0.3, HexColor('#dddddd')),
+            ]))
+            story.append(tbl)
 
-        zusammenfassung = ai_result.get('zusammenfassung', '')
-        if zusammenfassung:
-            pdf.ln(2)
-            pdf.set_font("Helvetica", "BI", 9)
-            pdf.cell(0, 6, "Fazit:", ln=True)
-            pdf.set_font("Helvetica", "I", 9)
-            pdf.set_text_color(60, 60, 60)
-            safe_z = zusammenfassung.encode('latin-1', 'replace').decode('latin-1')
-            pdf.multi_cell(0, 5, safe_z)
-            pdf.set_text_color(44, 44, 39)
-            pdf.ln(3)
+        zus = ai_result.get('zusammenfassung', '')
+        if zus:
+            story.append(Spacer(1, 3*mm))
+            info_box(f"<b>Fazit:</b> {zus}", C_LIGHT_GREY, HexColor('#cccccc'))
 
-        # Quick Wins
-        section_title("Quick Wins — sofort umsetzbar")
+        story.append(Spacer(1, 3*mm))
+        section_header("Quick Wins — sofort umsetzbar")
         for qw in ai_result.get('quickwins', []):
             prio = qw.get('prioritaet', 'MITTEL')
-            massnahme = qw.get('massnahme', '').encode('latin-1', 'replace').decode('latin-1')
-            impact = qw.get('impact', '').encode('latin-1', 'replace').decode('latin-1')
-            pdf.set_font("Helvetica", "B", 9)
-            if prio == 'HOCH':
-                pdf.set_text_color(180, 0, 0)
-            else:
-                pdf.set_text_color(180, 100, 0)
-            pdf.cell(20, 6, f"[{prio}]")
-            pdf.set_text_color(44, 44, 39)
-            pdf.set_font("Helvetica", "", 9)
-            pdf.multi_cell(0, 6, massnahme)
-            pdf.set_font("Helvetica", "I", 8)
-            pdf.set_text_color(80, 80, 80)
-            pdf.cell(20, 5, "")
-            pdf.multi_cell(0, 5, f"Wirkung: {impact}")
-            pdf.set_text_color(44, 44, 39)
-            pdf.ln(1)
+            massnahme = qw.get('massnahme', '')
+            impact = qw.get('impact', '')
+            prio_c = '#cc3333' if prio == 'HOCH' else '#f4a261'
+            border_c = C_RED if prio == 'HOCH' else C_ORANGE
+            qw_row = [
+                Paragraph(f"<b><font color='{prio_c}'>{prio}</font></b>",
+                          S('qp', fontName='Helvetica-Bold', fontSize=8, textColor=HexColor(prio_c), leading=12)),
+                Paragraph(f"<b>{massnahme}</b><br/>"
+                          f"<font size='7.5' color='#666666'>Wirkung: {impact}</font>",
+                          S('qm', fontName='Helvetica', fontSize=8.5, textColor=C_NEAR_BLACK, leading=12)),
+            ]
+            qw_tbl = Table([qw_row], colWidths=[22*mm, 158*mm])
+            qw_tbl.setStyle(TableStyle([
+                ('BACKGROUND', (0,0), (-1,-1), white),
+                ('TOPPADDING', (0,0), (-1,-1), 5),
+                ('BOTTOMPADDING', (0,0), (-1,-1), 5),
+                ('LEFTPADDING', (0,0), (-1,-1), 6),
+                ('VALIGN', (0,0), (-1,-1), 'TOP'),
+                ('LINEBELOW', (0,0), (-1,-1), 0.3, HexColor('#eeeeee')),
+                ('LINEBEFORE', (0,0), (0,-1), 3, border_c),
+            ]))
+            story.append(qw_tbl)
 
-    # ── Upsell ──
-    pdf.ln(4)
-    pdf.set_fill_color(240, 247, 244)
-    pdf.set_draw_color(13, 98, 72)
-    pdf.rect(10, pdf.get_y(), 190, 28, 'FD')
-    pdf.set_xy(10, pdf.get_y() + 3)
-    pdf.set_font("Helvetica", "B", 11)
-    pdf.set_text_color(13, 98, 72)
-    pdf.cell(0, 7, "GEO-Optimierungspaket Professional — EUR 149", ln=True)
-    pdf.set_xy(14, pdf.get_y())
-    pdf.set_font("Helvetica", "", 9)
-    pdf.set_text_color(44, 44, 39)
-    pdf.cell(0, 5, "7 fertige Texte: FAQ, H1+Subheadline, USP-Kacheln, 20 Keywords, Google Business,", ln=True)
-    pdf.set_xy(14, pdf.get_y())
-    pdf.cell(0, 5, "3 Meta-Descriptions, Ueber-uns-Text  |  Lieferung in 24h  |  kontakt@gernot-riedel.com", ln=True)
+        story.append(Spacer(1, 5*mm))
 
-    # ── Footer ──
-    pdf.set_y(-18)
-    pdf.set_fill_color(13, 98, 72)
-    pdf.rect(0, pdf.get_y(), 210, 20, 'F')
-    pdf.set_text_color(255, 255, 255)
-    pdf.set_font("Helvetica", "", 8)
-    pdf.set_xy(10, pdf.get_y() + 4)
-    pdf.cell(0, 5, "Gernot Riedel Tourism Consulting  |  gernot-riedel.com  |  kontakt@gernot-riedel.com  |  #GernotGoesAI #GernotGoesKI", ln=True)
-    pdf.set_xy(10, pdf.get_y())
-    pdf.set_font("Helvetica", "I", 7)
-    pdf.set_text_color(200, 230, 220)
-    pdf.cell(0, 4, "Technische Checks = verifizierte Messwerte. KI-Einschaetzungen sind Ergaenzungen, keine Messwerte.", ln=True)
+    # ── Upsell box ──
+    up_tbl = Table([[Paragraph(
+        "<b>GEO-Optimierungspaket Professional — EUR 149</b><br/>"
+        "<font size='8.5'>7 fertige Optimierungstexte: 10 FAQ-Antworten | H1+Subheadline | 4 USP-Kacheln | "
+        "20 lokale Keywords | Google Business Profil-Text | 3 Meta-Descriptions | Ueber-uns-Text neu<br/>"
+        "Lieferung in 24 Stunden per E-Mail  |  kontakt@gernot-riedel.com  |  +43 676 7237811</font>",
+        S('up', fontName='Helvetica', fontSize=9, textColor=C_GREEN, leading=14)
+    )]], colWidths=[180*mm])
+    up_tbl.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,-1), C_LIGHT_GREEN),
+        ('BOX', (0,0), (-1,-1), 2, C_GREEN),
+        ('TOPPADDING', (0,0), (-1,-1), 8),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 8),
+        ('LEFTPADDING', (0,0), (-1,-1), 10),
+    ]))
+    story.append(up_tbl)
 
-    return bytes(pdf.output())
+    doc.build(story)
+    return buf.getvalue()
 
 # ─── ZAPIER WEBHOOK ───────────────────────────────────────────────────────────
 
