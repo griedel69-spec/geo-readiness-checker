@@ -670,43 +670,60 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
+# ─── SESSION STATE INIT ───────────────────────────────────────────────────────
+if 'manueller_text' not in st.session_state:
+    st.session_state.manueller_text = ''
+
 # ─── FORMULAR ─────────────────────────────────────────────────────────────────
 with st.form("analyse_form"):
     st.markdown('<div class="form-card">', unsafe_allow_html=True)
 
     col1, col2 = st.columns(2)
     with col1:
-        betrieb = st.text_input("🏨 Betriebsname", placeholder="Hotel Kaiserlodge")
-        ort = st.text_input("📍 Ort / Region", placeholder="Scheffau am Wilden Kaiser, Tirol")
+        betrieb = st.text_input("🏨 Betriebsname", placeholder="Hotel Kaiserlodge",
+                                 key="betrieb_input")
+        ort = st.text_input("📍 Ort / Region", placeholder="Scheffau am Wilden Kaiser, Tirol",
+                             key="ort_input")
     with col2:
-        url = st.text_input("🌐 Website-URL", placeholder="https://www.kaiserlodge.at")
+        url = st.text_input("🌐 Website-URL", placeholder="https://www.kaiserlodge.at",
+                             key="url_input")
         typ = st.selectbox("🏷️ Betriebstyp", [
             "Hotel (3–5 Sterne)", "Pension / B&B", "Ferienwohnung / Chalet",
             "Resort / Wellness-Hotel", "Seilbahn / Bergbahn", "TVB / DMO", "Restaurant", "Sonstiges"
-        ])
+        ], key="typ_input")
 
-    with st.expander("✏️ Website-Text manuell eingeben — bei Bot-Schutz oder JS-Seiten"):
-        st.markdown("""
-        <div class="info-blocked">
-        <strong>Wann nötig?</strong> Viele moderne Hotel-Websites nutzen JavaScript-Rendering oder Bot-Schutz (Cloudflare).
-        Der Checker kann dann den Seiteninhalt nicht lesen. Die technischen Checks (HTTPS, robots.txt, Schema etc.)
-        funktionieren aber trotzdem. Für die inhaltliche KI-Analyse einfach die wichtigsten Texte hier einfügen.
-        </div>
-        """, unsafe_allow_html=True)
-        manueller_text = st.text_area(
-            "Startseite + Über uns + Zimmer (copy-paste aus dem Browser):",
-            placeholder="Willkommen im Hotel Kaiserlodge...\nUnsere Zimmer und Suiten...\nLage und Anreise...",
-            height=180
-        )
-
-    email = st.text_input("📧 E-Mail für das vollständige Paket (optional)", placeholder="ihr@email.at")
+    email = st.text_input("📧 E-Mail für das vollständige Paket (optional)",
+                           placeholder="ihr@email.at", key="email_input")
     st.markdown('</div>', unsafe_allow_html=True)
-
     submitted = st.form_submit_button("🔍 GEO-Analyse starten", type="primary", use_container_width=True)
+
+# Manueller Text AUSSERHALB des Forms (verhindert Streamlit-Bug mit expander+form)
+st.markdown("""
+<div class="info-blocked" style="margin-bottom:0.5rem;">
+✏️ <strong>Website-Text manuell eingeben</strong> — bei Bot-Schutz oder JavaScript-Seiten<br>
+<small>Viele Hotel-Websites blockieren automatischen Zugriff. Die technischen Checks funktionieren trotzdem.
+Für die inhaltliche KI-Analyse: wichtigste Texte (Startseite, Über uns, Zimmer) hier einfügen.</small>
+</div>
+""", unsafe_allow_html=True)
+manueller_text = st.text_area(
+    "Startseite + Über uns + Zimmer (copy-paste aus dem Browser):",
+    placeholder="Willkommen im Hotel Kaiserlodge...\nUnsere Zimmer und Suiten...\nLage und Anreise...",
+    height=150,
+    key="manueller_text",
+    label_visibility="collapsed"
+)
 
 # ─── ANALYSE ──────────────────────────────────────────────────────────────────
 if submitted:
-    if not betrieb.strip() or not ort.strip() or not url.strip():
+    # Werte aus session_state lesen — zuverlässiger als direkte Variablen nach Submit
+    betrieb = st.session_state.get('betrieb_input', betrieb).strip()
+    ort = st.session_state.get('ort_input', ort).strip()
+    url = st.session_state.get('url_input', url).strip()
+    typ = st.session_state.get('typ_input', typ)
+    email = st.session_state.get('email_input', email).strip()
+    manueller_text = st.session_state.get('manueller_text', '').strip()
+
+    if not betrieb or not ort or not url:
         st.error("Bitte Betriebsname, Ort und URL ausfüllen.")
         st.stop()
 
