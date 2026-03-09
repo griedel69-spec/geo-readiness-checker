@@ -1,1166 +1,980 @@
+"""
+GEO-Readiness Checker 2.0
+Gernot Riedel Tourism Consulting — gernot-riedel.com
+Erstellt mit KI-Unterstützung | #GernotGoesAI #GernotGoesKI
+"""
+
 import streamlit as st
-import anthropic
-import json
-import csv
-import io
-import datetime
-import re
-import time
 import requests
-from html.parser import HTMLParser
-from urllib.parse import urljoin, urlparse
-from fpdf import FPDF
-import urllib.request
+from bs4 import BeautifulSoup
+import json
+import time
+import re
+import os
+import anthropic
+from datetime import datetime
 
-# ─── AI BOT CRAWLABILITY CHECK ───
-def check_ai_bot_crawlability(website_url: str) -> dict:
-    AI_BOTS = {
-        "GPTBot":          "OpenAI / ChatGPT",
-        "ClaudeBot":       "Anthropic / Claude",
-        "PerplexityBot":   "Perplexity",
-        "Google-Extended": "Google AI (Gemini)",
-        "Bytespider":      "TikTok / ByteDance",
-    }
-    parsed = urlparse(website_url)
-    robots_url = f"{parsed.scheme}://{parsed.netloc}/robots.txt"
-    results = {}
-    blocked = []
-    allowed = []
-
-    try:
-        req = urllib.request.Request(robots_url, headers={"User-Agent": "GEO-Checker/1.0"})
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            robots_text = resp.read().decode("utf-8", errors="ignore").lower()
-    except Exception:
-        return {
-            "score": 10, "robots_url": robots_url,
-            "status": "Keine robots.txt gefunden – KI-Bots nicht blockiert",
-            "details": {bot: {"name": name, "status": "✅ erlaubt"} for bot, name in AI_BOTS.items()},
-            "blocked_count": 0,
-        }
-
-    lines = robots_text.splitlines()
-    current_agents = []
-    for line in lines:
-        line = line.strip()
-        if line.startswith("user-agent:"):
-            current_agents = [line.replace("user-agent:", "").strip()]
-        elif line.startswith("disallow:"):
-            path = line.replace("disallow:", "").strip()
-            for agent in current_agents:
-                for bot_key in AI_BOTS:
-                    if bot_key.lower() in agent:
-                        if path in ["/", "/*"]:
-                            blocked.append(bot_key)
-                            results[bot_key] = {"name": AI_BOTS[bot_key], "status": "🔴 BLOCKIERT"}
-                        else:
-                            results[bot_key] = {"name": AI_BOTS[bot_key], "status": "⚠️ teilweise eingeschränkt"}
-
-    for bot_key, bot_name in AI_BOTS.items():
-        if bot_key not in results:
-            allowed.append(bot_key)
-            results[bot_key] = {"name": bot_name, "status": "✅ erlaubt"}
-
-    return {
-        "score": min(len(allowed) * 2, 10),
-        "robots_url": robots_url,
-        "status": f"{len(blocked)} von {len(AI_BOTS)} KI-Bots blockiert",
-        "details": results,
-        "blocked_count": len(blocked),
-    }
-
-# ─── PAGE CONFIG ───
+# ─── PAGE CONFIG ──────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="GEO-Readiness Checker | Gernot Riedel Tourism Consulting",
-    page_icon="🏔",
+    page_title="GEO-Readiness Checker | Gernot Riedel",
+    page_icon="🏔️",
     layout="centered",
     initial_sidebar_state="collapsed"
 )
 
-# ─── CSS ───
+# ─── DESIGN SYSTEM ────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&display=swap');
-html, body, [class*="css"] { font-family: 'DM Sans', sans-serif; }
-.main-header { background: linear-gradient(135deg, #1a2332 0%, #2d4a3e 100%); padding: 36px 32px 28px; border-radius: 8px; margin-bottom: 28px; }
-.main-header h1 { color: #ffffff; font-size: 32px; font-weight: 700; margin: 0 0 8px 0; }
-.main-header h1 span { color: #c9a84c; }
-.main-header p { color: rgba(255,255,255,0.7); font-size: 15px; margin: 0; line-height: 1.6; }
-.brand-tag { display: inline-block; background: rgba(201,168,76,0.2); border: 1px solid rgba(201,168,76,0.4); color: #e8c97a; padding: 4px 12px; border-radius: 2px; font-size: 11px; font-weight: 600; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 16px; }
-.score-box { background: linear-gradient(135deg, #1a2332, #2d4a3e); border-radius: 8px; padding: 24px; text-align: center; color: white; }
-.score-number { font-size: 56px; font-weight: 800; line-height: 1; }
-.score-excellent { color: #7ab89a; }
-.score-good { color: #c9a84c; }
-.score-poor { color: #e67e22; }
-.score-critical { color: #c0392b; }
-.win-sofort { background: #fde8e8; border-left: 4px solid #c0392b; padding: 12px 16px; border-radius: 0 6px 6px 0; margin-bottom: 8px; }
-.win-kurz   { background: #fef3e2; border-left: 4px solid #e67e22; padding: 12px 16px; border-radius: 0 6px 6px 0; margin-bottom: 8px; }
-.win-mittel { background: #eaf5f0; border-left: 4px solid #27ae60; padding: 12px 16px; border-radius: 0 6px 6px 0; margin-bottom: 8px; }
-.cta-box { background: linear-gradient(135deg, #1a2332 0%, #2d4a3e 100%); border-radius: 8px; padding: 28px 32px; color: white; margin-top: 24px; }
-.footer-bar { background: #1a2332; color: rgba(255,255,255,0.5); padding: 16px 24px; border-radius: 8px; text-align: center; font-size: 12px; margin-top: 40px; }
-div[data-testid="stForm"] { background: white; padding: 24px; border-radius: 8px; border: 1px solid #e8e3da; }
-.stButton > button { background: #3d7a5e !important; color: white !important; font-weight: 700 !important; font-size: 16px !important; padding: 14px 28px !important; border-radius: 4px !important; border: none !important; width: 100% !important; }
-.stButton > button:hover { background: #2d4a3e !important; }
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;800&family=Source+Sans+3:wght@300;400;600&display=swap');
+
+/* Reset & base */
+.stApp { background: #f4f7f4; }
+.main .block-container { max-width: 740px; padding: 2rem 1.5rem; }
+
+/* Typography */
+body, p, li, span, div { font-family: 'Source Sans 3', sans-serif; }
+h1, h2, h3 { font-family: 'Playfair Display', serif; }
+
+/* Header */
+.geo-header {
+    background: linear-gradient(135deg, #0d6248 0%, #0a4f39 100%);
+    border-radius: 16px;
+    padding: 2.5rem 2rem 2rem;
+    margin-bottom: 2rem;
+    position: relative;
+    overflow: hidden;
+}
+.geo-header::before {
+    content: '';
+    position: absolute;
+    top: -40px; right: -40px;
+    width: 180px; height: 180px;
+    background: rgba(244,162,97,0.15);
+    border-radius: 50%;
+}
+.geo-header::after {
+    content: '';
+    position: absolute;
+    bottom: -30px; left: -30px;
+    width: 120px; height: 120px;
+    background: rgba(255,255,255,0.05);
+    border-radius: 50%;
+}
+.geo-title {
+    font-family: 'Playfair Display', serif;
+    font-size: 2rem;
+    font-weight: 800;
+    color: white;
+    margin: 0 0 0.4rem;
+    line-height: 1.2;
+}
+.geo-subtitle {
+    color: rgba(255,255,255,0.75);
+    font-size: 1rem;
+    font-weight: 300;
+    margin: 0;
+}
+.geo-byline {
+    color: #f4a261;
+    font-size: 0.8rem;
+    margin-top: 1rem;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+}
+
+/* Form card */
+.form-card {
+    background: white;
+    border-radius: 12px;
+    padding: 1.8rem;
+    box-shadow: 0 2px 20px rgba(0,0,0,0.06);
+    margin-bottom: 1.5rem;
+}
+
+/* Status badges */
+.badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+.badge-measured { background: #e8f5f0; color: #0d6248; border: 1px solid #0d6248; }
+.badge-ai { background: #fff3cd; color: #856404; border: 1px solid #f4a261; }
+.badge-warning { background: #ffe0e0; color: #cc3333; border: 1px solid #cc3333; }
+
+/* Checklist items */
+.check-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 1rem;
+    padding: 1rem 1.2rem;
+    background: white;
+    border-radius: 10px;
+    margin: 0.5rem 0;
+    box-shadow: 0 1px 8px rgba(0,0,0,0.05);
+    border-left: 4px solid transparent;
+}
+.check-item.pass { border-left-color: #0d6248; }
+.check-item.fail { border-left-color: #cc3333; }
+.check-item.warn { border-left-color: #f4a261; }
+.check-icon { font-size: 1.3rem; flex-shrink: 0; line-height: 1.4; }
+.check-content { flex: 1; }
+.check-title { font-weight: 600; color: #2b2b27; font-size: 0.95rem; }
+.check-detail { color: #666; font-size: 0.85rem; margin-top: 0.2rem; line-height: 1.4; }
+.check-badge { float: right; margin-top: 0.1rem; }
+
+/* Score summary */
+.score-summary {
+    background: linear-gradient(135deg, #0d6248, #0a4f39);
+    color: white;
+    border-radius: 12px;
+    padding: 1.8rem;
+    text-align: center;
+    margin: 1.5rem 0;
+}
+.score-big {
+    font-family: 'Playfair Display', serif;
+    font-size: 3.5rem;
+    font-weight: 800;
+    line-height: 1;
+}
+.score-label { font-size: 0.85rem; opacity: 0.8; margin-top: 0.3rem; letter-spacing: 0.05em; }
+.score-verdict { font-size: 1.1rem; font-weight: 600; margin-top: 0.8rem; }
+.score-note { font-size: 0.78rem; opacity: 0.65; margin-top: 0.5rem; }
+
+/* AI analysis section */
+.ai-section {
+    background: #fffdf7;
+    border: 1px solid #f4a261;
+    border-radius: 12px;
+    padding: 1.5rem;
+    margin: 1rem 0;
+}
+.ai-section-title {
+    font-family: 'Playfair Display', serif;
+    font-size: 1.1rem;
+    color: #2b2b27;
+    margin: 0 0 0.8rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+.ai-disclaimer {
+    background: #fff8f0;
+    border-left: 3px solid #f4a261;
+    padding: 0.6rem 0.8rem;
+    border-radius: 0 6px 6px 0;
+    font-size: 0.78rem;
+    color: #856404;
+    margin-bottom: 1rem;
+}
+
+/* Quick win cards */
+.qw-card {
+    background: white;
+    border-radius: 10px;
+    padding: 1rem 1.2rem;
+    margin: 0.5rem 0;
+    border-left: 4px solid #f4a261;
+    box-shadow: 0 1px 8px rgba(0,0,0,0.05);
+}
+.qw-prio-high { border-left-color: #cc3333; }
+.qw-prio-mid { border-left-color: #f4a261; }
+.qw-title { font-weight: 600; color: #2b2b27; font-size: 0.9rem; }
+.qw-impact { color: #555; font-size: 0.82rem; margin-top: 0.2rem; }
+
+/* Robots.txt highlight */
+.robots-alert {
+    background: #fff0f0;
+    border: 2px solid #cc3333;
+    border-radius: 10px;
+    padding: 1.2rem 1.5rem;
+    margin: 0.8rem 0;
+}
+.robots-ok {
+    background: #e8f5f0;
+    border: 2px solid #0d6248;
+    border-radius: 10px;
+    padding: 1.2rem 1.5rem;
+    margin: 0.8rem 0;
+}
+
+/* Teaser grid */
+.teaser-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 0.7rem;
+    margin: 1rem 0;
+}
+.teaser-item {
+    background: #f0f7f4;
+    border: 1.5px solid #0d6248;
+    border-radius: 8px;
+    padding: 0.8rem 0.6rem;
+    text-align: center;
+}
+.teaser-lock { font-size: 1.2rem; }
+.teaser-name { font-size: 0.75rem; color: #0d6248; font-weight: 600; margin-top: 0.3rem; }
+
+/* CTA button override */
+.stButton > button[kind="primary"] {
+    background: #0d6248 !important;
+    border: none !important;
+    font-family: 'Source Sans 3', sans-serif !important;
+    font-weight: 600 !important;
+    font-size: 1rem !important;
+    padding: 0.8rem !important;
+    border-radius: 8px !important;
+    transition: all 0.2s !important;
+}
+.stButton > button[kind="primary"]:hover {
+    background: #0a4f39 !important;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 16px rgba(13,98,72,0.3) !important;
+}
+
+/* Info boxes */
+.info-blocked {
+    background: #fff3cd;
+    border: 1px solid #f4a261;
+    border-radius: 8px;
+    padding: 1rem 1.2rem;
+    margin: 0.5rem 0;
+    font-size: 0.88rem;
+}
+.info-manual {
+    background: #e8f5f0;
+    border: 1px solid #0d6248;
+    border-radius: 8px;
+    padding: 1rem 1.2rem;
+    margin: 0.5rem 0;
+    font-size: 0.88rem;
+}
+
+/* Footer */
+.geo-footer {
+    text-align: center;
+    color: #999;
+    font-size: 0.75rem;
+    margin-top: 2rem;
+    padding-top: 1rem;
+    border-top: 1px solid #e0e0e0;
+}
 </style>
 """, unsafe_allow_html=True)
 
-# ─── HEADER ───
-st.markdown("""
-<div class="main-header">
-    <div class="brand-tag">🏔 Gernot Riedel Tourism Consulting</div>
-    <h1>GEO-Readiness <span>Checker</span></h1>
-    <p>Kostenlose Website-Analyse für Tourismusbetriebe im DACH-Raum.<br>
-    Erfahren Sie in 60 Sekunden, wie gut Ihr Betrieb in der KI-gestützten Suche sichtbar ist.</p>
-</div>
-""", unsafe_allow_html=True)
+# ─── TECHNICAL CHECKS ENGINE ──────────────────────────────────────────────────
 
-# ─── SESSION STATE ───
-if "leads" not in st.session_state:
-    st.session_state.leads = []
-if "result" not in st.session_state:
-    st.session_state.result = None
-if "anfrage_gesendet" not in st.session_state:
-    st.session_state.anfrage_gesendet = False
-if "admin_authenticated" not in st.session_state:
-    st.session_state.admin_authenticated = False
+AI_BOTS = {
+    'gptbot': 'ChatGPT (OpenAI)',
+    'chatgpt-user': 'ChatGPT Browse',
+    'anthropic-ai': 'Claude (Anthropic)',
+    'claude-web': 'Claude Web',
+    'google-extended': 'Google Gemini',
+    'perplexitybot': 'Perplexity AI',
+    'youbot': 'You.com',
+    'ccbot': 'Common Crawl',
+    'bingbot': 'Bing/Copilot',
+}
 
-
-# ══════════════════════════════════════════════════════════
-# CRAWLER
-# ══════════════════════════════════════════════════════════
-
-def crawl_website(base_url):
-    class TextExtractor(HTMLParser):
-        def __init__(self):
-            super().__init__()
-            self.text_parts = []
-            self.links = []
-            self.skip_tags = {"script", "style", "head", "noscript", "iframe"}
-            self.current_skip = 0
-            self.headings = []
-            self.in_heading = False
-            self.current_tag = ""
-
-        def handle_starttag(self, tag, attrs):
-            if tag in self.skip_tags:
-                self.current_skip += 1
-            self.current_tag = tag
-            if tag in ("h1", "h2", "h3"):
-                self.in_heading = True
-            if tag == "a":
-                for attr, val in attrs:
-                    if attr == "href" and val:
-                        self.links.append(val)
-
-        def handle_endtag(self, tag):
-            if tag in self.skip_tags:
-                self.current_skip = max(0, self.current_skip - 1)
-            if tag in ("h1", "h2", "h3"):
-                self.in_heading = False
-
-        def handle_data(self, data):
-            if self.current_skip == 0:
-                text = data.strip()
-                if text and len(text) > 2:
-                    if self.in_heading:
-                        self.headings.append(f"[{self.current_tag.upper()}] {text}")
-                    self.text_parts.append(text)
-
-        def get_text(self):
-            return " ".join(self.text_parts)
-
-    if not base_url.startswith("http"):
-        base_url = "https://" + base_url
-    base_url = base_url.rstrip("/")
-    base_domain = urlparse(base_url).netloc
-
+def fetch_url(url: str, timeout: int = 12) -> tuple[requests.Response | None, float, str]:
     headers = {
-        "User-Agent": "Mozilla/5.0 (compatible; GEO-Checker/1.0)",
-        "Accept": "text/html,application/xhtml+xml",
-        "Accept-Language": "de-AT,de;q=0.9"
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
+                      '(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'de-AT,de;q=0.9,en;q=0.5',
     }
+    start = time.time()
+    try:
+        resp = requests.get(url, headers=headers, timeout=timeout)
+        elapsed = round(time.time() - start, 2)
+        if resp.status_code in [403, 429, 503]:
+            return None, elapsed, 'blocked'
+        return resp, elapsed, 'ok'
+    except Exception:
+        elapsed = round(time.time() - start, 2)
+        return None, elapsed, 'blocked'
 
-    exclude_patterns = [
-        "datenschutz", "cookie", "impressum", "agb", "privacy",
-        "sitemap", "robots", ".xml", ".pdf", "login", "admin",
-        "wp-admin", "wp-login", "feed", "rss", "javascript:"
-    ]
-    faq_patterns = ["faq", "haeufig", "faq.html", "faq.php"]
-    content_patterns = [
-        "zimmer", "rooms", "appartement", "wohnung", "suite",
-        "ueber", "about", "uns", "lage", "anreise",
-        "wellness", "spa", "angebot", "preise", "kontakt",
-        "aktivitaet", "sommer", "winter", "service",
-        "gut-zu-wissen", "buchungsinformation"
-    ]
+def parse_robots(robots_text: str) -> dict:
+    """Parse robots.txt and return per-bot status."""
+    result = {'blocked': [], 'allowed': [], 'raw': robots_text}
+    lines = robots_text.lower().split('\n')
+    current_agents = []
+    agent_rules = {}
 
-    def fetch_page(url):
-        try:
-            resp = requests.get(url, headers=headers, timeout=10, allow_redirects=True)
-            if resp.status_code == 200 and "text/html" in resp.headers.get("content-type", ""):
-                html = resp.text
-                parser = TextExtractor()
-                parser.feed(html)
-                text = parser.get_text()
-                faq_spans = re.findall(r'<span>([^<]{15,200}\?)</span>', html)
-                if faq_spans:
-                    text += "\n\nFAQ-FRAGEN AUF DIESER SEITE:\n" + "\n".join(f"- {q}" for q in faq_spans[:30])
-                return text[:8000], parser.headings[:30], parser.links
-        except Exception:
-            pass
-        return None, [], []
-
-    def get_sitemap_urls(base):
-        found = []
-        for candidate in [base + "/sitemap.xml", base + "/sitemap_index.xml", base + "/sitemap.php"]:
-            try:
-                r = requests.get(candidate, headers=headers, timeout=8)
-                if r.status_code == 200:
-                    urls = re.findall(r'<loc>(https?://[^<]+)</loc>', r.text)
-                    for u in urls:
-                        if base_domain in u and u not in found:
-                            found.append(u)
-                    if found:
-                        break
-            except Exception:
-                pass
-        return found
-
-    def is_valid_url(u, seen):
-        u = u.rstrip("/")
-        if u in seen:
-            return False
-        try:
-            p = urlparse(u)
-        except Exception:
-            return False
-        if base_domain not in p.netloc:
-            return False
-        path = p.path.lower()
-        if any(ex in path for ex in exclude_patterns):
-            return False
-        return True
-
-    def url_priority(path):
-        for pat in content_patterns:
-            if pat in path:
-                return 4
-        return 1
-
-    pages = {}
-    seen = set()
-
-    text, headings, links = fetch_page(base_url)
-    if text:
-        pages["Startseite"] = {"text": text, "headings": headings}
-    seen.add(base_url)
-
-    sitemap_urls = get_sitemap_urls(base_url)
-
-    de_faq, other_faq = [], []
-    for u in sitemap_urls:
-        path = urlparse(u).path.lower()
-        if any(p in path for p in faq_patterns):
-            if "/de/" in path:
-                de_faq.append(u)
-            elif "/en/" not in path and "/fr/" not in path:
-                other_faq.append(u)
-    for link in links:
-        full = urljoin(base_url, link).rstrip("/")
-        path = urlparse(full).path.lower()
-        if base_domain in full and any(p in path for p in faq_patterns):
-            if full not in de_faq and full not in other_faq:
-                other_faq.append(full)
-
-    for faq_url in (de_faq + other_faq)[:3]:
-        seen.add(faq_url)
-        t, h, _ = fetch_page(faq_url)
-        if t:
-            pages["FAQ-Seite"] = {"text": t, "headings": h}
-            break
-
-    url_pool = sitemap_urls if sitemap_urls else [
-        urljoin(base_url, l).rstrip("/") for l in links
-        if urljoin(base_url, l).startswith("http") and base_domain in urljoin(base_url, l)
-    ]
-
-    priority_list = []
-    for u in url_pool:
-        u_clean = u.rstrip("/")
-        if not is_valid_url(u_clean, seen):
+    for line in lines:
+        line = line.strip()
+        if not line or line.startswith('#'):
             continue
-        path = urlparse(u_clean).path.lower()
-        priority_list.append((url_priority(path), u_clean, path))
-        seen.add(u_clean)
-    priority_list.sort(reverse=True)
+        if line.startswith('user-agent:'):
+            ua = line.split(':', 1)[1].strip()
+            current_agents = [ua]
+            for agent in current_agents:
+                if agent not in agent_rules:
+                    agent_rules[agent] = {'disallow': [], 'allow': []}
+        elif line.startswith('disallow:') and current_agents:
+            path = line.split(':', 1)[1].strip()
+            for agent in current_agents:
+                if agent not in agent_rules:
+                    agent_rules[agent] = {'disallow': [], 'allow': []}
+                agent_rules[agent]['disallow'].append(path)
+        elif line.startswith('allow:') and current_agents:
+            path = line.split(':', 1)[1].strip()
+            for agent in current_agents:
+                if agent not in agent_rules:
+                    agent_rules[agent] = {'disallow': [], 'allow': []}
+                agent_rules[agent]['allow'].append(path)
 
-    level2_links = []
-    for _, sub_url, sub_path in priority_list[:10]:
-        name = sub_path.strip("/").split("/")[-1][:40] or sub_path.strip("/")[:40]
-        t, h, sub_links = fetch_page(sub_url)
-        if t:
-            pages[name] = {"text": t, "headings": h}
-            if not sitemap_urls:
-                level2_links.extend(sub_links)
-
-    if not sitemap_urls and len(pages) < 8:
-        level2_list = []
-        for link in level2_links:
-            full = urljoin(base_url, link).rstrip("/")
-            if full.startswith("http") and base_domain in full and is_valid_url(full, seen):
-                path = urlparse(full).path.lower()
-                level2_list.append((url_priority(path), full, path))
-                seen.add(full)
-        level2_list.sort(reverse=True)
-        for _, sub_url, sub_path in level2_list[:5]:
-            name = sub_path.strip("/").split("/")[-1][:40] or sub_path.strip("/")[:40]
-            t, h, _ = fetch_page(sub_url)
-            if t:
-                pages[name] = {"text": t, "headings": h}
-
-    total_text = " ".join(d.get("text", "") for d in pages.values())
-    main_ok = "Startseite" in pages and len(pages["Startseite"].get("text", "")) > 200
-    total_chars = len(total_text)
-
-    if not main_ok:
-        stufe = 1
-    elif len(pages) <= 1 or total_chars < 800:
-        stufe = 2
-    else:
-        stufe = 3
-
-    return pages, {
-        "stufe": stufe,
-        "blocked": stufe == 1,
-        "partial": stufe == 2,
-        "complete": stufe == 3,
-        "pages_found": list(pages.keys()),
-        "total_chars": total_chars,
-    }
-
-
-# ══════════════════════════════════════════════════════════
-# NAP & FAQ EXTRAKTION
-# ══════════════════════════════════════════════════════════
-
-def extract_nap(pages):
-    ordered = []
-    for prio in ["kontakt", "contact", "impressum", "startseite"]:
-        for name, data in pages.items():
-            if prio in name.lower():
-                ordered.append(data.get("text", ""))
-    for data in pages.values():
-        ordered.append(data.get("text", ""))
-    full = " ".join(ordered)
-
-    nap = {"telefon": None, "email": None, "adresse": None, "crawl_seiten": list(pages.keys())}
-
-    tel = re.search(r'(\+43[\s\-./\d]{6,16}|\+49[\s\-./\d]{6,16}|\+41[\s\-./\d]{6,16}|0\d{3,5}[\s\-./\d]{4,12})', full)
-    if tel:
-        nap["telefon"] = tel.group().strip()
-
-    mail = re.search(r'[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,6}', full)
-    if mail:
-        nap["email"] = mail.group().strip()
-
-    addr = re.search(
-        r'[A-Za-z\u00c0-\u017e]+(?:stra\u00dfe|gasse|weg|platz|allee|ring|str\.|g\.)'
-        r'\s*\d{1,4}[a-zA-Z]?,?\s*\d{4,5}\s+[A-Za-z\u00c0-\u017e][\w\u00c0-\u017e\-]*',
-        full, re.IGNORECASE
-    )
-    if addr:
-        nap["adresse"] = addr.group().strip()
-
-    return nap
-
-
-def extract_faq(pages):
-    items = []
-    source = None
-
-    for name, data in pages.items():
-        text = data.get("text", "")
-        headings = data.get("headings", [])
-        is_faq = "faq" in name.lower()
-
-        for h in headings:
-            clean = re.sub(r'\[H\d\]\s*|\[SPAN\]\s*', '', h).strip()
-            if clean.endswith("?") and 15 <= len(clean) <= 200 and clean not in items:
-                items.append(clean)
-                if not source:
-                    source = name
-
-        if is_faq and text:
-            for s in re.split(r'(?<=[.!])\s+', text):
-                s = s.strip()
-                if s.endswith("?") and 20 <= len(s) <= 200 and s not in items:
-                    items.append(s)
-                    if not source:
-                        source = name
-
-    seen, deduped = set(), []
-    for q in items:
-        if q not in seen:
-            seen.add(q)
-            deduped.append(q)
-
-    return {
-        "fragen": deduped[:20],
-        "anzahl": len(deduped[:20]),
-        "quelle": source,
-        "faq_seite_gecrawlt": any("faq" in p.lower() for p in pages.keys()),
-    }
-
-
-# ══════════════════════════════════════════════════════════
-# FORMAT FÜR PROMPT
-# ══════════════════════════════════════════════════════════
-
-def format_for_prompt(pages):
-    if not pages:
-        return "Keine Website-Inhalte konnten geladen werden."
-    out = []
-    for name, data in pages.items():
-        out.append(f"\n=== SEITE: {name.upper()} ===")
-        headings = data.get("headings", [])
-        faq_h = [h for h in headings if h.startswith("[SPAN]") and "?" in h]
-        normal_h = [h for h in headings if not h.startswith("[SPAN]")]
-        if normal_h:
-            out.append("UEBERSCHRIFTEN: " + " | ".join(normal_h[:10]))
-        if faq_h:
-            out.append(f"FAQ-SEKTION ({len(faq_h)} Fragen):")
-            for fh in faq_h:
-                out.append("  " + fh.replace("[SPAN] ", "- "))
-        out.append("TEXT: " + data["text"][:2500])
-    return "\n".join(out)
-
-
-# ══════════════════════════════════════════════════════════
-# API HELPER
-# ══════════════════════════════════════════════════════════
-
-def call_api(client, model, max_tokens, messages):
-    fallback = "claude-haiku-4-5-20251001"
-    for current_model in ([model, fallback] if model != fallback else [model]):
-        for attempt in range(3):
-            try:
-                return client.messages.create(
-                    model=current_model,
-                    max_tokens=max_tokens,
-                    messages=messages
-                )
-            except Exception as e:
-                if "Overloaded" in type(e).__name__:
-                    if attempt < 2:
-                        wait = 15 * (attempt + 1)
-                        st.warning(f"⏳ API ausgelastet ({current_model}) — warte {wait}s... (Versuch {attempt+2}/3)")
-                        time.sleep(wait)
-                    else:
-                        if current_model != fallback:
-                            st.warning(f"⚠️ {current_model} nicht erreichbar — wechsle auf Fallback-Modell...")
-                        break
-                else:
-                    raise
-    raise RuntimeError("API nach allen Versuchen nicht erreichbar. Bitte in 1-2 Minuten erneut versuchen.")
-
-
-def parse_json(raw):
-    text = raw.strip()
-    try:
-        return json.loads(text)
-    except Exception:
-        pass
-    if "```" in text:
-        for part in text.split("```"):
-            part = part.strip()
-            if part.startswith("json"):
-                part = part[4:].strip()
-            if part.startswith("{"):
-                try:
-                    return json.loads(part)
-                except Exception:
-                    pass
-    start, end = text.find("{"), text.rfind("}") + 1
-    if start >= 0 and end > start:
-        candidate = text[start:end]
-        try:
-            return json.loads(candidate)
-        except Exception:
-            pass
-        candidate = re.sub(r",\s*([}\]])", r"\1", candidate)
-        candidate = re.sub(r"'([^']*)'(\s*:)", r'"\1"\2', candidate)
-        try:
-            return json.loads(candidate)
-        except Exception:
-            pass
-    return {}
-
-
-def clamp_score(raw):
-    try:
-        if isinstance(raw, str):
-            raw = raw.split("/")[0].strip()
-        return max(0, min(10, int(round(float(raw)))))
-    except Exception:
-        return 0
-
-
-# ══════════════════════════════════════════════════════════
-# HAUPTANALYSE
-# ══════════════════════════════════════════════════════════
-
-def run_analysis(hotel_name, location, url, business_type):
-    try:
-        api_key = st.secrets["ANTHROPIC_API_KEY"]
-    except Exception:
-        st.error("❌ API-Key nicht konfiguriert (ANTHROPIC_API_KEY in Streamlit Secrets fehlt).")
-        return None
-
-    with st.spinner("🔍 Website wird gecrawlt..."):
-        pages, crawl_status = crawl_website(url)
-        website_content = format_for_prompt(pages)
-        pages_found = crawl_status["pages_found"]
-
-    with st.spinner("🤖 KI-Bot Crawlability wird geprüft..."):
-        bot_check = check_ai_bot_crawlability(url)
-
-    if crawl_status["blocked"]:
-        st.error("❌ **Analyse nicht möglich — Website blockiert automatische Zugriffe**")
-        st.markdown(f"""
-<div style="background:#1a1a2e;border:2px solid #e74c3c;border-radius:12px;padding:24px;margin:16px 0;">
-    <h3 style="color:#e74c3c;margin-top:0;">🚫 Server-Blockierung erkannt</h3>
-    <p style="color:#ecf0f1;">Die Website <strong>{url}</strong> blockiert automatische Zugriffe (Bot-Schutz aktiv).</p>
-</div>
-""", unsafe_allow_html=True)
-        return None
-
-    if crawl_status["partial"]:
-        st.warning(
-            f"⚠️ **Eingeschränkte Datenbasis** — {len(pages_found)} Seite(n) geladen "
-            f"({', '.join(pages_found)})."
-        )
-
-    has_faq = "FAQ-FRAGEN" in website_content or "FAQ-SEKTION" in website_content
-    has_headings = "UEBERSCHRIFTEN:" in website_content
-    has_nap = any(kw in website_content for kw in ["Tel", "+43", "+49", "+41", "Adresse", "Straße", "Gasse", "@"])
-
-    datenverfuegbarkeit = f"""
-DATENVERFUEGBARKEIT:
-- Seiten gecrawlt: {', '.join(pages_found)}
-- FAQ-Daten: {"JA" if has_faq else "NEIN"}
-- Ueberschriften: {"JA" if has_headings else "NEIN"}
-- NAP-Daten: {"JA" if has_nap else "NEIN"}
-
-ABSOLUTE REGELN:
-1. Score = 0 + Kommentar "Keine Daten verfuegbar" wenn Datenbasis fehlt
-2. Nur bewerten was EXPLIZIT im gecrawlten Text steht — keine Annahmen
-3. Quick Wins NUR fuer Faktoren mit Score > 0
-4. NAP: nur vorhanden wenn Adresse UND Telefon im gecrawlten Text sichtbar
-"""
-
-    analyse_prompt = f"""Du bist GEO-Optimierungs-Experte fuer Tourismus-Websites im DACH-Raum.
-
-Betrieb: {hotel_name} | Ort: {location} | Typ: {business_type}
-Gecrawlte Seiten ({len(pages_found)}): {', '.join(pages_found)}
-{datenverfuegbarkeit}
-
-GECRAWLTE INHALTE:
-{website_content[:15000]}
-
-Bewerte 5 Faktoren (Score 0-10, ganze Zahl):
-1. FAQ-Sektion: Strukturierte Fragen & Antworten vorhanden?
-2. H1-Optimierung: Ortsbezug und USP in Hauptueberschriften?
-3. Lokale Keywords: Region, Bundesland, Aktivitaeten, Saison?
-4. NAP-Konsistenz: Name, Adresse, Telefon vollstaendig & einheitlich?
-5. USP-Klarheit: Echte Alleinstellungsmerkmale kommuniziert?
-
-Antworte NUR als valides JSON (keine Kommentare, kein Markdown):
-{{
-  "faktoren": [
-    {{"name": "FAQ-Sektion", "score": 0, "kommentar": "<1 Satz>"}},
-    {{"name": "H1-Optimierung", "score": 0, "kommentar": "<1 Satz>"}},
-    {{"name": "Lokale Keywords", "score": 0, "kommentar": "<1 Satz>"}},
-    {{"name": "NAP-Konsistenz", "score": 0, "kommentar": "<1 Satz>"}},
-    {{"name": "USP-Klarheit", "score": 0, "kommentar": "<1 Satz>"}}
-  ],
-  "quickwins": [
-    {{"prioritaet": "sofort", "massnahme": "<Massnahme>", "impact": "<Effekt>"}},
-    {{"prioritaet": "sofort", "massnahme": "<Massnahme>", "impact": "<Effekt>"}},
-    {{"prioritaet": "kurz", "massnahme": "<Massnahme>", "impact": "<Effekt>"}},
-    {{"prioritaet": "kurz", "massnahme": "<Massnahme>", "impact": "<Effekt>"}},
-    {{"prioritaet": "mittel", "massnahme": "<Massnahme>", "impact": "<Effekt>"}}
-  ],
-  "zusammenfassung": "<2-3 Saetze Gesamtbewertung>"
-}}"""
-
-    client = anthropic.Anthropic(api_key=api_key)
-
-    with st.spinner("📊 Analysiere Website-Inhalte..."):
-        try:
-            msg1 = call_api(client, "claude-opus-4-5", 2000,
-                            [{"role": "user", "content": analyse_prompt}])
-        except RuntimeError as e:
-            st.error(f"❌ {e}")
-            return None
-
-    result = parse_json(msg1.content[0].text)
-
-    if not result or "faktoren" not in result:
-        st.error("❌ Analyse lieferte kein verwertbares Ergebnis. Bitte erneut versuchen.")
-        return None
-
-    faktoren = result.get("faktoren", [])
-    if len(faktoren) != 5:
-        st.error(f"❌ Analyse unvollständig ({len(faktoren)}/5 Faktoren). Bitte erneut versuchen.")
-        return None
-
-    for f in faktoren:
-        f["score"] = clamp_score(f.get("score", 0))
-
-    result["gesamtscore"] = sum(f["score"] for f in faktoren)
-
-    raw_qw = result.get("quickwins", [])
-    result["quickwins"] = [
-        w for w in raw_qw
-        if isinstance(w, dict)
-        and str(w.get("prioritaet", "")).strip() in ("sofort", "kurz", "mittel")
-        and str(w.get("massnahme", "")).strip()
-        and str(w.get("impact", "")).strip()
-    ]
-
-    paket_prompt = f"""Erstelle ein GEO-Optimierungspaket fuer diesen Tourismusbetrieb.
-
-Betrieb: {hotel_name} | Ort: {location} | Typ: {business_type}
-
-GECRAWLTE WEBSITE-INHALTE:
-{website_content[:12000]}
-
-WICHTIG: Nur Fakten aus gecrawlten Inhalten — keine Erfindungen.
-
-Antworte NUR als valides JSON (kein Markdown):
-{{
-  "faq": [{{"frage": "<Frage>", "antwort": "<Antwort>"}}],
-  "h1_neu": "<Optimierter H1-Titel max 70 Zeichen>",
-  "h1_sub": "<Subheadline max 120 Zeichen>",
-  "usp_box": [{{"emoji": "<>", "titel": "<>", "text": "<1 Satz>"}}],
-  "keywords": ["<kw1>", "<kw2>"],
-  "google_business": "<Google Business Text max 750 Zeichen>",
-  "meta_start": "<Meta-Description Startseite max 155 Zeichen>",
-  "meta_zimmer": "<Meta-Description Zimmer max 155 Zeichen>",
-  "meta_preise": "<Meta-Description Preise max 155 Zeichen>",
-  "ueber_uns": "<Ueber uns Text 250-300 Woerter>"
-}}"""
-
-    with st.spinner("📦 Erstelle Optimierungspaket..."):
-        try:
-            msg2 = call_api(client, "claude-haiku-4-5-20251001", 3000,
-                            [{"role": "user", "content": paket_prompt}])
-            paket = parse_json(msg2.content[0].text)
-        except RuntimeError as e:
-            st.warning(f"⚠️ Optimierungspaket nicht verfügbar: {e}")
-            paket = {}
-        except Exception:
-            paket = {}
-
-    result["paket"] = paket
-    result["bot_check"] = bot_check
-    result["hotelName"] = hotel_name
-    result["location"] = location
-    result["url"] = url
-    result["type"] = business_type
-    result["email"] = ""
-    result["date"] = datetime.date.today().strftime("%d.%m.%Y")
-    result["nap"] = extract_nap(pages)
-    result["faq"] = extract_faq(pages)
+    for bot_key, bot_name in AI_BOTS.items():
+        rules = agent_rules.get(bot_key, agent_rules.get('*', {'disallow': [], 'allow': []}))
+        if bot_key in agent_rules:
+            disallows = agent_rules[bot_key]['disallow']
+            if '/' in disallows:
+                result['blocked'].append(bot_name)
+            else:
+                result['allowed'].append(bot_name)
+        else:
+            # Falls under wildcard
+            wildcard = agent_rules.get('*', {'disallow': []})
+            if '/' in wildcard.get('disallow', []):
+                result['blocked'].append(bot_name)
+            else:
+                result['allowed'].append(bot_name)
 
     return result
 
+def run_technical_checks(url: str) -> dict:
+    """Run all 10 verified technical checks. Returns structured results."""
+    base_url = url.rstrip('/')
+    checks = {}
 
-# ══════════════════════════════════════════════════════════
-# PDF GENERATOR
-# ══════════════════════════════════════════════════════════
-
-def sanitize(text):
-    if not text:
-        return ""
-    replacements = {
-        '\u2013': '-', '\u2014': '-', '\u2018': "'", '\u2019': "'",
-        '\u201c': '"', '\u201d': '"', '\u2026': '...', '\u2022': '*',
-        '\u00e4': 'ae', '\u00f6': 'oe', '\u00fc': 'ue',
-        '\u00c4': 'Ae', '\u00d6': 'Oe', '\u00dc': 'Ue',
-        '\u00df': 'ss', '\u00e9': 'e', '\u00e8': 'e', '\u00e0': 'a',
-        '\u2192': '->', '\u00b0': 'Grad', '\u20ac': 'EUR',
+    # CHECK 1: HTTPS
+    checks['https'] = {
+        'name': 'HTTPS / Sichere Verbindung',
+        'pass': url.startswith('https://'),
+        'detail': 'Website nutzt HTTPS — verschlüsselte Verbindung aktiv.' if url.startswith('https://') else 'Kein HTTPS! KI-Crawler bevorzugen sichere Seiten.',
+        'badge': 'measured',
+        'impact': 'Hoch' if not url.startswith('https://') else None
     }
-    for k, v in replacements.items():
-        text = text.replace(k, v)
-    return text.encode('latin-1', errors='replace').decode('latin-1')
 
+    # Fetch main page
+    resp, load_time, status = fetch_url(url)
+    checks['_fetch_status'] = status
+    checks['_load_time_raw'] = load_time
 
-def generate_pdf(r):
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_auto_page_break(auto=True, margin=15)
+    # CHECK 2: Ladezeit
+    checks['load_time'] = {
+        'name': 'Ladezeit',
+        'pass': load_time < 3.0 if status == 'ok' else None,
+        'detail': f'{load_time}s — {"✓ Gut" if load_time < 3.0 else "⚠ Zu langsam (Ziel: unter 3s)"}' if status == 'ok' else 'Nicht messbar (Seite blockiert automatischen Zugriff)',
+        'badge': 'measured',
+        'impact': 'Mittel' if status == 'ok' and load_time >= 3.0 else None
+    }
 
-    pdf.set_fill_color(26, 35, 50)
-    pdf.rect(0, 0, 210, 45, 'F')
-    pdf.set_font("Helvetica", "B", 20)
-    pdf.set_text_color(255, 255, 255)
-    pdf.set_xy(15, 10)
-    pdf.cell(0, 10, "GEO-Readiness Report", ln=True)
-    pdf.set_font("Helvetica", "", 12)
-    pdf.set_text_color(201, 168, 76)
-    pdf.set_x(15)
-    pdf.cell(0, 8, sanitize(r["hotelName"]), ln=True)
-    pdf.set_font("Helvetica", "", 9)
-    pdf.set_text_color(180, 190, 200)
-    pdf.set_x(15)
-    pdf.cell(0, 6, sanitize(f"{r['location']} | {r['type']} | {r['date']}"), ln=True)
+    if resp and status == 'ok':
+        soup = BeautifulSoup(resp.text, 'html.parser')
 
-    score = r["gesamtscore"]
-    pdf.set_fill_color(61, 122, 94)
-    pdf.rect(158, 8, 38, 28, 'F')
-    pdf.set_font("Helvetica", "B", 26)
-    pdf.set_text_color(255, 255, 255)
-    pdf.set_xy(158, 12)
-    pdf.cell(38, 12, str(score), align="C", ln=False)
-    pdf.set_font("Helvetica", "", 8)
-    pdf.set_xy(158, 26)
-    pdf.cell(38, 6, "von 50 Punkten", align="C", ln=True)
-    pdf.ln(18)
+        # CHECK 3: Meta Description
+        meta = soup.find('meta', attrs={'name': 'description'})
+        meta_content = meta.get('content', '').strip() if meta else ''
+        meta_len = len(meta_content)
+        meta_ok = bool(meta_content) and 50 <= meta_len <= 160
+        checks['meta_desc'] = {
+            'name': 'Meta-Description',
+            'pass': meta_ok,
+            'detail': f'"{meta_content[:100]}{"..." if meta_len > 100 else ""}" ({meta_len} Zeichen)' if meta_content else 'Fehlt! KI-Systeme nutzen Meta-Descriptions als Zusammenfassung.',
+            'badge': 'measured',
+            'impact': 'Hoch' if not meta_ok else None
+        }
 
-    pdf.set_fill_color(240, 237, 232)
-    pdf.set_text_color(80, 80, 80)
-    pdf.set_font("Helvetica", "I", 10)
-    pdf.set_x(15)
-    pdf.multi_cell(180, 6, sanitize(r.get("zusammenfassung", "")), fill=True)
-    pdf.ln(8)
+        # CHECK 4: Viewport / Mobilfähigkeit
+        viewport = soup.find('meta', attrs={'name': 'viewport'})
+        checks['viewport'] = {
+            'name': 'Mobilfähigkeit (Viewport)',
+            'pass': bool(viewport),
+            'detail': 'Viewport-Tag vorhanden — mobiloptimiert.' if viewport else 'Kein Viewport-Tag. Seite möglicherweise nicht mobiloptimiert.',
+            'badge': 'measured',
+            'impact': 'Mittel' if not viewport else None
+        }
 
-    pdf.set_font("Helvetica", "B", 13)
-    pdf.set_text_color(26, 35, 50)
-    pdf.set_x(15)
-    pdf.cell(0, 8, "Faktor-Analyse", ln=True)
-    pdf.ln(2)
+        # CHECK 5: Sprach-Attribut
+        html_tag = soup.find('html')
+        lang = html_tag.get('lang', '').strip() if html_tag else ''
+        checks['lang'] = {
+            'name': 'Sprach-Attribut (lang="")',
+            'pass': bool(lang),
+            'detail': f'Sprache "{lang}" definiert — KI versteht den Sprachkontext.' if lang else 'Kein lang-Attribut. KI-Systeme können Sprache nicht sicher zuordnen.',
+            'badge': 'measured',
+            'impact': 'Mittel' if not lang else None
+        }
 
-    for f in r["faktoren"]:
-        s = clamp_score(f.get("score", 0))
-        rc, gc, bc = (39, 174, 96) if s >= 8 else ((230, 126, 34) if s >= 5 else (192, 57, 43))
-        pdf.set_font("Helvetica", "B", 10)
-        pdf.set_text_color(26, 35, 50)
-        pdf.set_x(15)
-        pdf.cell(140, 6, sanitize(f["name"]))
-        pdf.set_text_color(rc, gc, bc)
-        pdf.cell(0, 6, f"{s}/10", ln=True)
-        pdf.set_fill_color(220, 220, 220)
-        pdf.rect(15, pdf.get_y(), 80, 3, 'F')
-        pdf.set_fill_color(rc, gc, bc)
-        pdf.rect(15, pdf.get_y(), (s / 10) * 80, 3, 'F')
-        pdf.ln(5)
-        pdf.set_font("Helvetica", "", 9)
-        pdf.set_text_color(100, 110, 120)
-        pdf.set_x(15)
-        pdf.multi_cell(180, 5, sanitize(f.get("kommentar", "")))
-        pdf.ln(3)
+        # CHECK 6: Title-Tag
+        title_tag = soup.find('title')
+        title_text = title_tag.get_text(strip=True) if title_tag else ''
+        title_len = len(title_text)
+        title_ok = bool(title_text) and 20 <= title_len <= 70
+        checks['title'] = {
+            'name': 'Page Title',
+            'pass': title_ok,
+            'detail': f'"{title_text[:80]}" ({title_len} Zeichen) — {"✓ Optimale Länge" if 20 <= title_len <= 70 else "⚠ Zu lang (Ziel: 50–70 Zeichen)" if title_len > 70 else "⚠ Zu kurz"}' if title_text else 'Kein Title-Tag gefunden.',
+            'badge': 'measured',
+            'impact': None if title_ok else 'Hoch'
+        }
 
-    pdf.ln(4)
-    pdf.set_font("Helvetica", "B", 13)
-    pdf.set_text_color(26, 35, 50)
-    pdf.set_x(15)
-    pdf.cell(0, 8, "Quick Wins", ln=True)
-    pdf.ln(2)
+        # CHECK 7: Canonical Tag
+        canonical = soup.find('link', rel='canonical')
+        checks['canonical'] = {
+            'name': 'Canonical-Tag',
+            'pass': bool(canonical),
+            'detail': f'Canonical gesetzt: {canonical.get("href","")[:80]}' if canonical else 'Kein Canonical-Tag. Risiko für doppelte Inhalte.',
+            'badge': 'measured',
+            'impact': 'Mittel' if not canonical else None
+        }
 
-    prio_colors = {"sofort": (192, 57, 43), "kurz": (230, 126, 34), "mittel": (39, 174, 96)}
-    prio_labels = {"sofort": "SOFORT", "kurz": "KURZFRISTIG", "mittel": "MITTELFRISTIG"}
+        # CHECK 8: Strukturierte Daten (Schema.org)
+        schemas = []
+        for script in soup.find_all('script', type='application/ld+json'):
+            try:
+                data = json.loads(script.string)
+                if isinstance(data, dict):
+                    t = data.get('@type', '')
+                    if t:
+                        schemas.append(t)
+                elif isinstance(data, list):
+                    schemas.extend([d.get('@type', '') for d in data if isinstance(d, dict) and d.get('@type')])
+            except Exception:
+                pass
 
-    for w in r.get("quickwins", []):
-        prio = str(w.get("prioritaet", "mittel")).strip()
-        if prio not in prio_colors:
-            prio = "mittel"
-        rc, gc, bc = prio_colors[prio]
-        pdf.set_fill_color(rc, gc, bc)
-        pdf.set_text_color(255, 255, 255)
-        pdf.set_font("Helvetica", "B", 8)
-        pdf.set_x(15)
-        pdf.cell(30, 6, prio_labels[prio], fill=True)
-        pdf.set_font("Helvetica", "", 10)
-        pdf.set_text_color(26, 35, 50)
-        pdf.set_x(48)
-        pdf.multi_cell(157, 6, sanitize(str(w.get("massnahme", ""))))
-        pdf.set_font("Helvetica", "I", 9)
-        pdf.set_text_color(61, 122, 94)
-        pdf.set_x(48)
-        pdf.cell(0, 5, sanitize("-> " + str(w.get("impact", ""))), ln=True)
-        pdf.ln(2)
+        has_lodging = any(s in ['LodgingBusiness', 'Hotel', 'BedAndBreakfast', 'Resort', 'Hostel'] for s in schemas)
+        has_faq = 'FAQPage' in schemas
+        has_local = any(s in ['LocalBusiness', 'LodgingBusiness', 'Organization'] for s in schemas)
+        schema_detail_parts = []
+        if schemas:
+            schema_detail_parts.append(f'Gefunden: {", ".join(set(schemas))}')
+        if has_faq:
+            schema_detail_parts.append('✓ FAQPage Schema — exzellent für KI-Sichtbarkeit')
+        elif not has_faq:
+            schema_detail_parts.append('⚠ Kein FAQPage Schema — größte schnelle Gewinnchance')
+        if has_lodging:
+            schema_detail_parts.append('✓ Hotel-Schema vorhanden')
 
-    pdf.ln(6)
-    y = pdf.get_y()
-    pdf.set_fill_color(26, 35, 50)
-    pdf.rect(15, y, 180, 28, 'F')
-    pdf.set_font("Helvetica", "B", 11)
-    pdf.set_text_color(201, 168, 76)
-    pdf.set_xy(20, y + 5)
-    pdf.cell(0, 7, "Detailberatung anfragen")
-    pdf.set_font("Helvetica", "", 9)
-    pdf.set_text_color(200, 210, 220)
-    pdf.set_xy(20, y + 13)
-    pdf.cell(0, 5, "kontakt@gernot-riedel.com  |  +43 676 7237811  |  gernot-riedel.com")
+        checks['schema'] = {
+            'name': 'Strukturierte Daten (Schema.org)',
+            'pass': has_local,
+            'warn': has_local and not has_faq,
+            'detail': ' | '.join(schema_detail_parts) if schema_detail_parts else 'Keine Schema.org-Daten gefunden. KI kann den Betriebstyp nicht automatisch erkennen.',
+            'badge': 'measured',
+            'impact': 'Hoch' if not has_local else ('Mittel' if not has_faq else None),
+            'faq_missing': not has_faq
+        }
 
-    return bytes(pdf.output())
+    else:
+        # JS-heavy or blocked — mark these as "not checkable"
+        for key in ['meta_desc', 'viewport', 'lang', 'title', 'canonical', 'schema']:
+            checks[key] = {
+                'name': {'meta_desc': 'Meta-Description', 'viewport': 'Mobilfähigkeit', 'lang': 'Sprach-Attribut',
+                         'title': 'Page Title', 'canonical': 'Canonical-Tag', 'schema': 'Strukturierte Daten'}[key],
+                'pass': None,
+                'detail': 'Website blockiert automatischen Zugriff — manuelle Prüfung empfohlen.',
+                'badge': 'measured',
+                'impact': None
+            }
 
+    # CHECK 9: robots.txt + KI-Bot-Check
+    robots_resp, _, robots_status = fetch_url(base_url + '/robots.txt', timeout=5)
+    if robots_resp and robots_resp.status_code == 200 and len(robots_resp.text) > 10:
+        robots_data = parse_robots(robots_resp.text)
+        blocked = robots_data['blocked']
+        checks['robots'] = {
+            'name': 'KI-Bot-Zugang (robots.txt)',
+            'pass': len(blocked) == 0,
+            'detail_blocked': blocked,
+            'detail_raw': robots_resp.text,
+            'badge': 'measured',
+            'is_robots': True,
+            'exists': True
+        }
+    else:
+        checks['robots'] = {
+            'name': 'KI-Bot-Zugang (robots.txt)',
+            'pass': None,
+            'detail': 'robots.txt nicht gefunden oder nicht erreichbar.',
+            'badge': 'measured',
+            'is_robots': True,
+            'exists': False
+        }
 
-# ══════════════════════════════════════════════════════════
-# UI — FORMULAR
-# ══════════════════════════════════════════════════════════
+    # CHECK 10: Sitemap
+    sitemap_resp, _, _ = fetch_url(base_url + '/sitemap.xml', timeout=5)
+    sitemap_ok = sitemap_resp is not None and sitemap_resp.status_code == 200
+    checks['sitemap'] = {
+        'name': 'Sitemap.xml',
+        'pass': sitemap_ok,
+        'detail': 'sitemap.xml gefunden — KI-Crawler können alle Seiten finden.' if sitemap_ok else 'Keine sitemap.xml. KI-Crawler müssen Seiten selbst entdecken.',
+        'badge': 'measured',
+        'impact': 'Mittel' if not sitemap_ok else None
+    }
 
-st.markdown("### Website-Analyse starten")
+    return checks
 
-with st.form("geo_form"):
+def score_from_checks(checks: dict) -> tuple[int, int]:
+    """Calculate score: passed / total checkable."""
+    total = 0
+    passed = 0
+    for key, check in checks.items():
+        if key.startswith('_'):
+            continue
+        if check.get('pass') is None:
+            continue
+        total += 1
+        if check.get('warn'):
+            passed += 0.5
+        elif check.get('pass'):
+            passed += 1
+    return int(passed), total
+
+# ─── CLAUDE AI ANALYSIS ───────────────────────────────────────────────────────
+
+def analyse_mit_claude(betrieb: str, ort: str, url: str, typ: str, website_text: str, checks: dict) -> dict:
+    api_key = st.secrets.get("ANTHROPIC_API_KEY", os.environ.get("ANTHROPIC_API_KEY", ""))
+    client = anthropic.Anthropic(api_key=api_key)
+
+    # Summarize technical checks for context
+    check_summary = []
+    for key, check in checks.items():
+        if key.startswith('_') or key == 'robots':
+            continue
+        status = "✓" if check.get('pass') else ("~" if check.get('pass') is None else "✗")
+        check_summary.append(f"{status} {check['name']}: {check.get('detail','')[:80]}")
+
+    prompt = f"""Du bist ein GEO-Optimierungsexperte für Tourismus im DACH-Raum.
+
+BETRIEB: {betrieb}
+ORT: {ort}
+TYP: {typ}
+URL: {url}
+
+TECHNISCHE CHECKS (bereits verifiziert):
+{chr(10).join(check_summary)}
+
+WEBSITE-TEXT (vom Betreiber bereitgestellt oder automatisch geladen):
+{website_text[:4000] if website_text else "Kein Text verfügbar — nur technische Analyse möglich."}
+
+DEINE AUFGABE:
+Erstelle eine INHALTLICHE GEO-Analyse als Ergänzung zu den technischen Checks.
+Bewerte NUR was du aus dem Website-Text DIREKT ableiten kannst.
+Bei fehlenden Informationen: schreibe "[nicht beurteilbar — Text fehlt]"
+
+WICHTIG:
+- Keine Schlussfolgerungen aus regionalen Daten auf den Betrieb
+- Keine erfundenen Fakten
+- Zahlen nur wenn explizit im Text
+- Alles mit [bitte prüfen] markieren was unsicher ist
+
+Antworte NUR mit diesem JSON (kein Text davor/danach):
+
+{{
+  "zusammenfassung": "2-3 Sätze zur inhaltlichen KI-Readiness auf Basis des Textes",
+  "text_bewertung": {{
+    "usp_klarheit": {{"score": 0-10, "kommentar": "Was sind die USPs laut Text? Sind sie klar formuliert?"}},
+    "lokale_signale": {{"score": 0-10, "kommentar": "Ort, Region, Aktivitäten, Lage — wie präzise?"}},
+    "zielgruppen_klarheit": {{"score": 0-10, "kommentar": "Wer wird angesprochen? Für wen ist der Betrieb?"}},
+    "faq_potential": {{"score": 0-10, "kommentar": "Welche Fragen würden Gäste stellen die nicht beantwortet werden?"}}
+  }},
+  "quickwins": [
+    {{"prioritaet": "HOCH", "massnahme": "...", "impact": "..."}},
+    {{"prioritaet": "HOCH", "massnahme": "...", "impact": "..."}},
+    {{"prioritaet": "MITTEL", "massnahme": "...", "impact": "..."}},
+    {{"prioritaet": "MITTEL", "massnahme": "...", "impact": "..."}},
+    {{"prioritaet": "MITTEL", "massnahme": "...", "impact": "..."}}
+  ],
+  "paket": {{
+    "faq": [
+      {{"frage": "...", "antwort": "..."}},
+      {{"frage": "...", "antwort": "..."}},
+      {{"frage": "...", "antwort": "..."}},
+      {{"frage": "...", "antwort": "..."}},
+      {{"frage": "...", "antwort": "..."}},
+      {{"frage": "...", "antwort": "..."}},
+      {{"frage": "...", "antwort": "..."}},
+      {{"frage": "...", "antwort": "..."}},
+      {{"frage": "...", "antwort": "..."}},
+      {{"frage": "...", "antwort": "..."}}
+    ],
+    "h1_neu": "Neuer H1-Vorschlag (max 70 Zeichen, keyword-reich)",
+    "h1_sub": "Subheadline (max 120 Zeichen)",
+    "usp_box": [
+      {{"emoji": "🏔️", "titel": "USP 1", "text": "Ein Satz"}},
+      {{"emoji": "🛁", "titel": "USP 2", "text": "Ein Satz"}},
+      {{"emoji": "🍽️", "titel": "USP 3", "text": "Ein Satz"}},
+      {{"emoji": "📍", "titel": "USP 4", "text": "Ein Satz"}}
+    ],
+    "keywords": ["keyword1", "keyword2", "keyword3", "keyword4", "keyword5",
+                 "keyword6", "keyword7", "keyword8", "keyword9", "keyword10",
+                 "keyword11", "keyword12", "keyword13", "keyword14", "keyword15",
+                 "keyword16", "keyword17", "keyword18", "keyword19", "keyword20"],
+    "google_business": "Google Business Profil-Text (max 750 Zeichen)",
+    "meta_start": "Meta-Description Startseite (max 155 Zeichen)",
+    "meta_zimmer": "Meta-Description Zimmer/Suiten (max 155 Zeichen)",
+    "meta_preise": "Meta-Description Preise/Buchung (max 155 Zeichen)",
+    "ueber_uns": "Neuer Über-uns-Text (250-300 Wörter, KI-lesbar, mit Geschichte/Lage/USPs)"
+  }}
+}}"""
+
+    response = client.messages.create(
+        model="claude-opus-4-5",
+        max_tokens=4000,
+        messages=[{"role": "user", "content": prompt}]
+    )
+    text = response.content[0].text
+    if "```" in text:
+        text = text.split("```")[1]
+        if text.startswith("json"):
+            text = text[4:]
+    start = text.find("{")
+    end = text.rfind("}") + 1
+    return json.loads(text[start:end])
+
+# ─── ZAPIER WEBHOOK ───────────────────────────────────────────────────────────
+
+def sende_webhook(betrieb, ort, email, url, typ, score_passed, score_total, zusammenfassung, checks):
+    webhook_url = st.secrets.get("ZAPIER_WEBHOOK_URL", os.environ.get("ZAPIER_WEBHOOK_URL", ""))
+    if not webhook_url:
+        return
+    robots = checks.get('robots', {})
+    blocked_bots = robots.get('detail_blocked', []) if robots.get('is_robots') else []
+    payload = {
+        "betrieb": betrieb, "ort": ort, "email": email, "website": url, "typ": typ,
+        "score": f"{score_passed}/{score_total}",
+        "datum": datetime.now().strftime("%d.%m.%Y %H:%M"),
+        "zusammenfassung": zusammenfassung,
+        "ki_bots_blockiert": blocked_bots,
+        "produkt": "GEO-Optimierungspaket Professional",
+        "preis": "149"
+    }
+    try:
+        requests.post(webhook_url, json=payload, timeout=8)
+    except Exception:
+        pass
+
+# ─── UI ───────────────────────────────────────────────────────────────────────
+
+st.markdown("""
+<div class="geo-header">
+    <div class="geo-title">🏔️ GEO-Readiness Checker</div>
+    <div class="geo-subtitle">Wie gut findet ChatGPT & Co. Ihren Betrieb?</div>
+    <div class="geo-byline">Gernot Riedel Tourism Consulting · gernot-riedel.com</div>
+</div>
+""", unsafe_allow_html=True)
+
+# ─── FORMULAR ─────────────────────────────────────────────────────────────────
+with st.form("analyse_form"):
+    st.markdown('<div class="form-card">', unsafe_allow_html=True)
+
     col1, col2 = st.columns(2)
     with col1:
-        hotel_name = st.text_input("Name des Betriebs", placeholder="z.B. Hotel Alpenblick")
-        business_type = st.selectbox("Betriebsart", [
-            "Hotel (3-4 Sterne)", "Hotel (5 Sterne)", "Pension / Gasthof",
-            "Ferienwohnung / Appartement", "Ferienhaus", "Tourismusverband / DMO"
-        ])
+        betrieb = st.text_input("🏨 Betriebsname", placeholder="Hotel Kaiserlodge")
+        ort = st.text_input("📍 Ort / Region", placeholder="Scheffau am Wilden Kaiser, Tirol")
     with col2:
-        location = st.text_input("Ort / Region", placeholder="z.B. Zell am See, Salzburg")
-        contact_email = st.text_input("Ihre E-Mail (für Report)", placeholder="name@hotel.at")
-    website_url = st.text_input("Website-URL", placeholder="https://www.ihr-hotel.at")
-    submitted = st.form_submit_button("🔍 Jetzt Website analysieren")
+        url = st.text_input("🌐 Website-URL", placeholder="https://www.kaiserlodge.at")
+        typ = st.selectbox("🏷️ Betriebstyp", [
+            "Hotel (3–5 Sterne)", "Pension / B&B", "Ferienwohnung / Chalet",
+            "Resort / Wellness-Hotel", "Seilbahn / Bergbahn", "TVB / DMO", "Restaurant", "Sonstiges"
+        ])
 
-# ══════════════════════════════════════════════════════════
-# ANALYSE AUSFÜHREN
-# ══════════════════════════════════════════════════════════
+    with st.expander("✏️ Website-Text manuell eingeben — bei Bot-Schutz oder JS-Seiten"):
+        st.markdown("""
+        <div class="info-blocked">
+        <strong>Wann nötig?</strong> Viele moderne Hotel-Websites nutzen JavaScript-Rendering oder Bot-Schutz (Cloudflare).
+        Der Checker kann dann den Seiteninhalt nicht lesen. Die technischen Checks (HTTPS, robots.txt, Schema etc.)
+        funktionieren aber trotzdem. Für die inhaltliche KI-Analyse einfach die wichtigsten Texte hier einfügen.
+        </div>
+        """, unsafe_allow_html=True)
+        manueller_text = st.text_area(
+            "Startseite + Über uns + Zimmer (copy-paste aus dem Browser):",
+            placeholder="Willkommen im Hotel Kaiserlodge...\nUnsere Zimmer und Suiten...\nLage und Anreise...",
+            height=180
+        )
 
+    email = st.text_input("📧 E-Mail für das vollständige Paket (optional)", placeholder="ihr@email.at")
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    submitted = st.form_submit_button("🔍 GEO-Analyse starten", type="primary", use_container_width=True)
+
+# ─── ANALYSE ──────────────────────────────────────────────────────────────────
 if submitted:
-    if not hotel_name or not website_url or not contact_email:
-        st.error("Bitte Betriebsname, Website-URL und E-Mail angeben.")
-    else:
-        st.session_state.anfrage_gesendet = False
-        result = run_analysis(hotel_name, location, website_url, business_type)
-        if result:
-            result["email"] = contact_email
-            st.session_state.result = result
-            st.session_state.leads.append({
-                "Betrieb": hotel_name,
-                "Ort": location,
-                "E-Mail": contact_email,
-                "Score": result["gesamtscore"],
-                "Typ": business_type,
-                "URL": website_url,
-                "Datum": result["date"],
-                "Zusammenfassung": result.get("zusammenfassung", "")
-            })
+    if not betrieb.strip() or not ort.strip() or not url.strip():
+        st.error("Bitte Betriebsname, Ort und URL ausfüllen.")
+        st.stop()
 
+    if not url.startswith('http'):
+        url = 'https://' + url
 
-# ══════════════════════════════════════════════════════════
-# UI — ERGEBNISSE
-# ══════════════════════════════════════════════════════════
+    # PHASE 1: Technische Checks
+    with st.spinner("🔬 Technische Checks laufen..."):
+        checks = run_technical_checks(url)
 
-if st.session_state.result:
-    r = st.session_state.result
-    score = r["gesamtscore"]
+    fetch_status = checks.get('_fetch_status', 'blocked')
 
-    st.markdown("---")
-    st.markdown(f"## 📊 Analyse: {r['hotelName']}")
-    st.caption(f"{r['location']} · {r['type']} · {r['date']}")
-
-    if score >= 40:
-        score_class, score_label = "score-excellent", "Ausgezeichnet"
-    elif score >= 28:
-        score_class, score_label = "score-good", "Gut"
-    elif score >= 16:
-        score_class, score_label = "score-poor", "Verbesserungsbedarf"
-    else:
-        score_class, score_label = "score-critical", "Kritisch"
-
-    col_score, col_summary = st.columns([1, 2])
-    with col_score:
-        st.markdown(f"""
-        <div class="score-box">
-            <div class="score-number {score_class}">{score}</div>
-            <div style="color:rgba(255,255,255,0.6);font-size:13px;margin-top:4px;">von 50 Punkten</div>
-            <div style="color:#c9a84c;font-weight:700;margin-top:8px;">{score_label}</div>
+    if fetch_status == 'blocked' and not manueller_text.strip():
+        st.markdown("""
+        <div class="info-blocked">
+        🚫 <strong>Website blockiert automatischen Zugriff</strong> (Bot-Schutz oder JavaScript-Rendering aktiv).<br><br>
+        Die technischen Checks (HTTPS, robots.txt, Sitemap) wurden trotzdem durchgeführt.<br>
+        Für die <strong>inhaltliche KI-Analyse</strong>: Bitte Website-Text oben im Feld einfügen und nochmals starten.
         </div>
         """, unsafe_allow_html=True)
-    with col_summary:
-        st.info(r.get("zusammenfassung", ""))
+    elif fetch_status == 'ok':
+        st.markdown('<div class="info-manual">✅ Website erfolgreich analysiert</div>', unsafe_allow_html=True)
 
-    st.markdown("### Faktor-Analyse")
-    for f in r["faktoren"]:
-        s = clamp_score(f.get("score", 0))
-        bar_color = "#27ae60" if s >= 8 else "#e67e22" if s >= 5 else "#c0392b"
-        col_f1, col_f2 = st.columns([4, 1])
-        with col_f1:
-            st.markdown(f"**{f['name']}**")
-            st.progress(s / 10)
-            st.caption(f.get("kommentar", ""))
-        with col_f2:
-            st.markdown(
-                f"<div style='font-size:28px;font-weight:800;color:{bar_color};"
-                f"text-align:center;padding-top:8px'>{s}"
-                f"<span style='font-size:14px;color:#aaa'>/10</span></div>",
-                unsafe_allow_html=True
-            )
-        st.markdown("---")
+    # PHASE 2: Score
+    score_passed, score_total = score_from_checks(checks)
+    pct = round((score_passed / score_total * 100)) if score_total > 0 else 0
 
-    st.markdown("### ⚡ Quick Wins")
-    quickwins = r.get("quickwins", [])
-    if not quickwins:
-        st.info("Keine Quick Wins verfügbar — zu wenig Datenbasis für konkrete Empfehlungen.")
-    for w in quickwins:
-        try:
-            prio = str(w.get("prioritaet", "mittel")).lower().strip()
-            if prio not in ("sofort", "kurz", "mittel"):
-                prio = "mittel"
-            massnahme = str(w.get("massnahme", "")).strip()
-            impact = str(w.get("impact", "")).strip()
-            if not massnahme:
-                continue
-            label = {"sofort": "🔴 SOFORT", "kurz": "🟠 KURZFRISTIG", "mittel": "🟢 MITTELFRISTIG"}[prio]
+    if pct >= 80:
+        verdict = "Gut aufgestellt"
+        verdict_emoji = "✅"
+    elif pct >= 55:
+        verdict = "Verbesserungspotenzial"
+        verdict_emoji = "⚠️"
+    else:
+        verdict = "Handlungsbedarf"
+        verdict_emoji = "🔴"
+
+    st.markdown(f"""
+    <div class="score-summary">
+        <div class="score-big">{score_passed}/{score_total}</div>
+        <div class="score-label">TECHNISCHE CHECKS BESTANDEN</div>
+        <div class="score-verdict">{verdict_emoji} {verdict}</div>
+        <div class="score-note">🔬 Verifizierte Messwerte — keine KI-Schätzung</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # PHASE 3: Robots.txt Highlight (das Star-Feature)
+    robots = checks.get('robots', {})
+    if robots.get('exists'):
+        blocked = robots.get('detail_blocked', [])
+        if blocked:
+            bot_list = ', '.join(blocked)
             st.markdown(f"""
-        <div class="win-{prio}">
-            <strong>{label}</strong> &nbsp; {massnahme}<br>
-            <span style="color:#3d7a5e;font-size:13px;">→ {impact}</span>
+            <div class="robots-alert">
+            🚫 <strong>KI-Bots blockiert!</strong><br>
+            Folgende KI-Systeme können diese Website laut robots.txt NICHT lesen:<br>
+            <strong>{bot_list}</strong><br><br>
+            <small>Das bedeutet: Diese KI-Systeme nennen den Betrieb bei Anfragen möglicherweise nicht.
+            Sofortiger Handlungsbedarf — Lösung: robots.txt anpassen.</small>
+            </div>
+            """, unsafe_allow_html=True)
+        else:
+            st.markdown("""
+            <div class="robots-ok">
+            ✅ <strong>Alle KI-Bots haben Zugang</strong><br>
+            robots.txt lässt ChatGPT, Claude, Perplexity & Co. zu — gute Ausgangslage für KI-Sichtbarkeit.
+            </div>
+            """, unsafe_allow_html=True)
+    elif not robots.get('exists'):
+        st.markdown("""
+        <div class="info-blocked">
+        ⚠️ <strong>robots.txt nicht gefunden</strong> — KI-Bots folgen dann Standard-Einstellungen.
+        Eine explizite robots.txt wird empfohlen.
         </div>
         """, unsafe_allow_html=True)
-        except Exception:
+
+    # PHASE 4: Checkliste
+    st.subheader("📋 Technische Checkliste")
+    st.caption("🔬 Alle Punkte sind verifizierte Messwerte — reproduzierbar und nachvollziehbar.")
+
+    check_display_order = ['https', 'load_time', 'title', 'meta_desc', 'viewport',
+                           'lang', 'canonical', 'schema', 'robots', 'sitemap']
+
+    for key in check_display_order:
+        check = checks.get(key, {})
+        if not check:
             continue
 
-    st.markdown("### 🔍 NAP & FAQ Detailcheck")
-    nap = r.get("nap", {})
-    faq = r.get("faq", {})
-    col_nap, col_faq = st.columns(2)
+        # Special handling for robots
+        if check.get('is_robots'):
+            if not check.get('exists'):
+                icon = "⚠️"
+                css_class = "warn"
+                detail = "robots.txt nicht gefunden."
+            elif check.get('pass'):
+                icon = "✅"
+                css_class = "pass"
+                detail = "Alle KI-Bots erlaubt."
+            else:
+                icon = "❌"
+                css_class = "fail"
+                blocked_names = check.get('detail_blocked', [])
+                detail = f"Blockiert: {', '.join(blocked_names)}" if blocked_names else "Einschränkungen gefunden."
 
-    with col_nap:
-        st.markdown("#### 📍 NAP-Daten")
-        seiten = nap.get("crawl_seiten", [])
-        st.caption(f"Gecrawlte Seiten: {', '.join(seiten)}" if seiten else "Keine Seiten gecrawlt.")
-        if nap.get("telefon"):
-            st.success(f"✅ **Telefon:** {nap['telefon']}")
+            badge_html = '<span class="badge badge-measured">🔬 Gemessen</span>'
+            st.markdown(f"""
+            <div class="check-item {css_class}">
+                <div class="check-icon">{icon}</div>
+                <div class="check-content">
+                    <div class="check-title">{check['name']} <span class="check-badge">{badge_html}</span></div>
+                    <div class="check-detail">{detail}</div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+            continue
+
+        p = check.get('pass')
+        warn = check.get('warn', False)
+
+        if p is None:
+            icon = "❓"
+            css_class = "warn"
+        elif warn:
+            icon = "⚠️"
+            css_class = "warn"
+        elif p:
+            icon = "✅"
+            css_class = "pass"
         else:
-            st.error("❌ **Telefon:** Nicht im gecrawlten Text gefunden.")
-            st.caption("Mögliche Ursachen: Bild/Grafik, JavaScript-gerendert, oder fehlend.")
-        if nap.get("email"):
-            st.success(f"✅ **E-Mail:** {nap['email']}")
-        else:
-            st.warning("⚠️ **E-Mail:** Nicht im gecrawlten Text gefunden.")
-        if nap.get("adresse"):
-            st.success(f"✅ **Adresse:** {nap['adresse']}")
-        else:
-            st.error("❌ **Adresse:** Nicht im gecrawlten Text gefunden.")
-            st.caption("Mögliche Ursachen: Kontaktseite nicht gecrawlt, Karte/Bild, JavaScript.")
+            icon = "❌"
+            css_class = "fail"
 
-    with col_faq:
-        st.markdown("#### ❓ FAQ-Analyse")
-        faq_gecrawlt = faq.get("faq_seite_gecrawlt", False)
-        faq_anzahl = faq.get("anzahl", 0)
-        faq_quelle = faq.get("quelle", "")
-        st.caption(
-            f"FAQ-Seite gecrawlt. Quelle: {faq_quelle or 'unbekannt'}"
-            if faq_gecrawlt else "Keine dedizierte FAQ-Seite gefunden."
-        )
-        if faq_anzahl > 0:
-            st.success(f"✅ **{faq_anzahl} FAQ-Fragen gefunden** (Quelle: {faq_quelle})")
-            with st.expander("Gefundene Fragen anzeigen"):
-                for i, frage in enumerate(faq.get("fragen", []), 1):
-                    st.write(f"{i}. {frage}")
-        else:
-            st.error("❌ **Keine FAQ-Fragen gefunden.**")
+        badge_type = check.get('badge', 'measured')
+        badge_labels = {'measured': '🔬 Gemessen', 'ai': '🤖 KI-Einschätzung'}
+        badge_css = {'measured': 'badge-measured', 'ai': 'badge-ai'}
+        badge_html = f'<span class="badge {badge_css.get(badge_type, "badge-measured")}">{badge_labels.get(badge_type, "")}</span>'
 
-    st.markdown("---")
-    st.markdown("### 🤖 KI-Bot Crawlability")
-    bot_check = r.get("bot_check", {})
-    bot_score = bot_check.get("score", 0)
-    bot_col1, bot_col2 = st.columns([3, 1])
-    with bot_col1:
-        st.progress(bot_score / 10)
-        st.caption(f"Geprüfte robots.txt: {bot_check.get('robots_url', '')}")
-    with bot_col2:
-        bot_color = "#27ae60" if bot_score >= 8 else "#e67e22" if bot_score >= 4 else "#c0392b"
-        st.markdown(
-            f"<div style='font-size:28px;font-weight:800;color:{bot_color};"
-            f"text-align:center'>{bot_score}"
-            f"<span style='font-size:14px;color:#aaa'>/10</span></div>",
-            unsafe_allow_html=True
-        )
-    for bot_key, info in bot_check.get("details", {}).items():
-        st.write(f"{info['status']} &nbsp; **{info['name']}** `{bot_key}`")
-    if bot_check.get("blocked_count", 0) > 0:
-        st.error(f"⚠️ **{bot_check['blocked_count']} KI-Bot(s) blockiert!**")
-    else:
-        st.success("✅ Alle wichtigen KI-Bots haben Zugriff auf diese Website.")
+        detail = check.get('detail', '')
 
-    st.markdown("---")
-    st.markdown("### 📄 Report herunterladen")
-    pdf_bytes = generate_pdf(r)
-    filename = f"GEO_Report_{r['hotelName'].replace(' ','_')}_{r['date'].replace('.','')}.pdf"
-    st.download_button(
-        label="📥 PDF-Report herunterladen",
-        data=pdf_bytes,
-        file_name=filename,
-        mime="application/pdf",
-        use_container_width=True
-    )
-
-    paket = r.get("paket", {})
-    if paket:
-        st.markdown("---")
-        st.markdown("""
-        <div style="background:linear-gradient(135deg,#1a2332,#2d4a3e);padding:28px;border-radius:8px;">
-            <h3 style="color:#c9a84c;margin:0 0 12px 0">📦 Ihr persönliches GEO-Optimierungspaket ist fertig</h3>
-            <p style="color:rgba(255,255,255,0.9);margin:0 0 16px 0;font-size:15px;line-height:1.7">
-            Basierend auf dieser Analyse wurde für Ihren Betrieb ein
-            <strong style="color:white">vollständiges Optimierungspaket</strong> erstellt.</p>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px">
-                <div style="background:rgba(255,255,255,0.08);padding:10px 14px;border-radius:6px;border-left:3px solid #c9a84c">
-                    <div style="color:#c9a84c;font-size:11px;font-weight:700">LIEFERUNG 1</div>
-                    <div style="color:white;font-size:14px">📋 10 FAQ-Fragen + Antworten</div>
-                </div>
-                <div style="background:rgba(255,255,255,0.08);padding:10px 14px;border-radius:6px;border-left:3px solid #c9a84c">
-                    <div style="color:#c9a84c;font-size:11px;font-weight:700">LIEFERUNG 2</div>
-                    <div style="color:white;font-size:14px">🏷️ H1-Titel + Subheadline neu</div>
-                </div>
-                <div style="background:rgba(255,255,255,0.08);padding:10px 14px;border-radius:6px;border-left:3px solid #c9a84c">
-                    <div style="color:#c9a84c;font-size:11px;font-weight:700">LIEFERUNG 3</div>
-                    <div style="color:white;font-size:14px">⭐ USP-Box mit 4 Alleinstellungsmerkmalen</div>
-                </div>
-                <div style="background:rgba(255,255,255,0.08);padding:10px 14px;border-radius:6px;border-left:3px solid #c9a84c">
-                    <div style="color:#c9a84c;font-size:11px;font-weight:700">LIEFERUNG 4</div>
-                    <div style="color:white;font-size:14px">🔍 20 lokale Keywords</div>
-                </div>
-                <div style="background:rgba(255,255,255,0.08);padding:10px 14px;border-radius:6px;border-left:3px solid #c9a84c">
-                    <div style="color:#c9a84c;font-size:11px;font-weight:700">LIEFERUNG 5</div>
-                    <div style="color:white;font-size:14px">📍 Google Business Profil-Text</div>
-                </div>
-                <div style="background:rgba(255,255,255,0.08);padding:10px 14px;border-radius:6px;border-left:3px solid #c9a84c">
-                    <div style="color:#c9a84c;font-size:11px;font-weight:700">LIEFERUNG 6</div>
-                    <div style="color:white;font-size:14px">🔗 3 Meta-Descriptions</div>
-                </div>
-                <div style="background:rgba(255,255,255,0.08);padding:10px 14px;border-radius:6px;border-left:3px solid #c9a84c;grid-column:span 2">
-                    <div style="color:#c9a84c;font-size:11px;font-weight:700">LIEFERUNG 7</div>
-                    <div style="color:white;font-size:14px">📖 "Über uns" komplett neu (KI-optimiert)</div>
-                </div>
+        st.markdown(f"""
+        <div class="check-item {css_class}">
+            <div class="check-icon">{icon}</div>
+            <div class="check-content">
+                <div class="check-title">{check['name']} <span class="check-badge">{badge_html}</span></div>
+                <div class="check-detail">{detail}</div>
             </div>
         </div>
         """, unsafe_allow_html=True)
 
-    st.markdown("""
-    <div class="cta-box">
-        <h3 style="color:#c9a84c;margin:0 0 8px 0">🚀 GEO-Optimierungspaket Professional — € 149</h3>
-        <p style="color:rgba(255,255,255,0.85);margin:0 0 6px 0;font-size:15px">
-        Alle 7 Lieferungen als fertiges Dokument:</p>
-        <p style="color:rgba(255,255,255,0.75);margin:0 0 16px 0;font-size:13px">
-        ✅ 10 FAQ-Fragen &nbsp;|&nbsp; ✅ H1-Titel &nbsp;|&nbsp; ✅ USP-Box &nbsp;|&nbsp;
-        ✅ 20 Keywords &nbsp;|&nbsp; ✅ Google Business &nbsp;|&nbsp;
-        ✅ 3 Meta-Descriptions &nbsp;|&nbsp; ✅ Über uns neu
-        </p>
-    </div>
-    """, unsafe_allow_html=True)
+    # PHASE 5: KI-Analyse (wenn Text vorhanden)
+    website_text = manueller_text.strip() if manueller_text.strip() else \
+                   (checks.get('_raw_text', '') if fetch_status == 'ok' else '')
 
-    if not st.session_state.anfrage_gesendet:
-        if st.button("📩 Ja, ich möchte das GEO-Optimierungspaket für € 149",
-                     use_container_width=True, type="primary"):
-            with st.spinner("Ihre Anfrage wird verarbeitet..."):
-                try:
-                    webhook_url = st.secrets.get("ZAPIER_WEBHOOK_URL", "")
-                    payload = {
-                        "betrieb": r["hotelName"],
-                        "ort": r["location"],
-                        "email": r["email"],
-                        "website": r["url"],
-                        "typ": r["type"],
-                        "score": r["gesamtscore"],
-                        "datum": r["date"],
-                        "zusammenfassung": r.get("zusammenfassung", ""),
-                        "faktoren": json.dumps(r["faktoren"], ensure_ascii=False),
-                        "quickwins": json.dumps(r["quickwins"], ensure_ascii=False),
-                        "produkt": "GEO-Optimierungspaket",
-                        "preis": "149 EUR"
-                    }
-                    if webhook_url:
-                        requests.post(webhook_url, json=payload, timeout=10)
-                    st.session_state.anfrage_gesendet = True
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Fehler beim Senden: {e}")
-    else:
-        st.success("✅ Ihre Anfrage ist eingegangen. Sie erhalten innerhalb von 24h Ihre Optimierungstexte.")
-        st.info("📧 kontakt@gernot-riedel.com | 📞 +43 676 7237811")
-
-    st.markdown("""
-    <div style="background:#f5f0e8;border:1px solid #e8e3da;border-left:4px solid #c9a84c;
-                padding:20px 24px;border-radius:4px;margin-top:16px">
-        <h4 style="margin:0 0 8px 0;color:#1a2332">📊 Noch mehr Potenzial: ReviewRadar 2.0</h4>
-        <p style="margin:0 0 8px 0;color:#4a5568;font-size:14px">
-        Bewertungsanalyse von Booking.com, Google, TripAdvisor & HolidayCheck —
-        mit klarem Aktionsplan und ROI-Kalkulation.</p>
-        <p style="margin:0;font-size:14px">
-        <strong style="color:#c9a84c">ab € 149</strong> &nbsp;—&nbsp;
-        <a href="https://gernot-riedel.com/hotelbewertungen-analyse-mehr-umsatz-direktbuchungen-reviewradar/"
-        target="_blank" style="color:#3d7a5e;font-weight:600">Alle Pakete & Details →</a>
-        </p>
-    </div>
-    """, unsafe_allow_html=True)
-
-
-# ══════════════════════════════════════════════════════════
-# ADMIN-BEREICH MIT PASSWORTSCHUTZ
-# ══════════════════════════════════════════════════════════
-
-st.markdown("---")
-with st.expander("🔒 Admin-Bereich", expanded=False):
-    if not st.session_state.admin_authenticated:
-        st.markdown("**Zugang nur für Administratoren**")
-        admin_pw = st.text_input(
-            "Passwort",
-            type="password",
-            placeholder="Admin-Passwort eingeben...",
-            key="admin_pw_input"
-        )
-        if st.button("Anmelden", key="admin_login_btn"):
+    ai_result = None
+    if website_text or fetch_status == 'ok':
+        st.divider()
+        with st.spinner("🤖 Inhaltliche KI-Analyse läuft..."):
             try:
-                correct_pw = st.secrets["ADMIN_PASSWORD"]
-            except Exception:
-                st.error("❌ ADMIN_PASSWORD nicht in Streamlit Secrets konfiguriert.")
-                st.stop()
-            if admin_pw == correct_pw:
-                st.session_state.admin_authenticated = True
-                st.rerun()
-            else:
-                st.error("❌ Falsches Passwort.")
+                ai_result = analyse_mit_claude(betrieb, ort, url, typ,
+                                               website_text or f"Betrieb: {betrieb}, Ort: {ort}, Typ: {typ}",
+                                               checks)
+            except Exception as e:
+                st.warning(f"KI-Analyse konnte nicht abgeschlossen werden: {str(e)}")
+
+    if ai_result:
+        st.markdown('<div class="ai-section">', unsafe_allow_html=True)
+        st.markdown('<div class="ai-section-title">🤖 Inhaltliche KI-Analyse</div>', unsafe_allow_html=True)
+        st.markdown("""
+        <div class="ai-disclaimer">
+        🤖 <strong>KI-Einschätzung</strong> — Diese Bewertungen basieren auf Claude's Analyse des Website-Textes.
+        Sie ergänzen die technischen Checks, sind aber keine Messwerte.
+        </div>
+        """, unsafe_allow_html=True)
+
+        # Text-Bewertungen
+        text_bew = ai_result.get('text_bewertung', {})
+        labels = {
+            'usp_klarheit': 'USP-Klarheit',
+            'lokale_signale': 'Lokale Signale',
+            'zielgruppen_klarheit': 'Zielgruppen-Klarheit',
+            'faq_potential': 'FAQ-Potenzial'
+        }
+        for key, label in labels.items():
+            item = text_bew.get(key, {})
+            score = item.get('score', 0)
+            kommentar = item.get('kommentar', '')
+            bar_filled = "█" * score
+            bar_empty = "░" * (10 - score)
+            st.markdown(f"""
+            <div class="check-item {'pass' if score >= 7 else 'warn' if score >= 4 else 'fail'}">
+                <div class="check-icon">{'✅' if score >= 7 else '⚠️' if score >= 4 else '❌'}</div>
+                <div class="check-content">
+                    <div class="check-title">{label} — {score}/10 &nbsp;
+                        <code style="font-size:0.75rem">{bar_filled}{bar_empty}</code>
+                        <span class="check-badge"><span class="badge badge-ai">🤖 KI-Einschätzung</span></span>
+                    </div>
+                    <div class="check-detail">{kommentar}</div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+        # Zusammenfassung
+        st.markdown(f"""
+        <div style="background:#f8f9fa;border-radius:8px;padding:1rem;margin:1rem 0;font-size:0.9rem;color:#444;">
+        💬 {ai_result.get('zusammenfassung', '')}
+        </div>
+        """, unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+
+        # Quick Wins
+        st.subheader("⚡ Quick Wins — sofort umsetzbar")
+        for qw in ai_result.get('quickwins', []):
+            prio = qw.get('prioritaet', 'MITTEL')
+            css = 'qw-prio-high' if prio == 'HOCH' else 'qw-prio-mid'
+            prio_color = '#cc3333' if prio == 'HOCH' else '#f4a261'
+            st.markdown(f"""
+            <div class="qw-card {css}">
+                <div class="qw-title">
+                    <span style="background:{prio_color};color:white;padding:2px 8px;border-radius:4px;font-size:0.72rem;font-weight:600;">{prio}</span>
+                    &nbsp; {qw.get('massnahme', '')}
+                </div>
+                <div class="qw-impact">💡 {qw.get('impact', '')}</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+    # PHASE 6: Paket-Teaser
+    st.divider()
+    st.subheader("📦 GEO-Optimierungspaket Professional — €149")
+    st.markdown("*7 fertig formulierte Texte und Optimierungen — sofort auf der Website einsetzbar:*")
+
+    teaser = [
+        ("❓", "10 FAQ-Antworten"), ("📝", "H1 + Subheadline"),
+        ("⭐", "4 USP-Kacheln"), ("🔑", "20 Keywords"),
+        ("📍", "Google Business"), ("🔍", "3 Meta-Descriptions"),
+        ("🏨", "Über-uns-Text")
+    ]
+    cols = st.columns(3)
+    for i, (emoji, name) in enumerate(teaser):
+        with cols[i % 3]:
+            st.markdown(f"""
+            <div class="teaser-item">
+                <div class="teaser-lock">{emoji} 🔒</div>
+                <div class="teaser-name">{name}</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+    st.markdown("")
+
+    if email.strip():
+        if st.button("🛒  Jetzt für €149 bestellen — Lieferung in 24 Stunden", type="primary", use_container_width=True):
+            zusammenfassung = ai_result.get('zusammenfassung', '') if ai_result else ''
+            sende_webhook(betrieb, ort, email, url, typ, score_passed, score_total, zusammenfassung, checks)
+            st.success("""
+            ✅ **Vielen Dank — Ihre Bestellung ist eingegangen!**
+
+            Sie erhalten das vollständige GEO-Optimierungspaket mit allen 7 Lieferungen innerhalb von 24 Stunden per E-Mail.
+            Bei Fragen: kontakt@gernot-riedel.com | +43 676 7237811
+            """)
     else:
-        col_head, col_logout = st.columns([4, 1])
-        with col_head:
-            st.success("✅ Admin-Zugang aktiv")
-        with col_logout:
-            if st.button("Abmelden", key="admin_logout_btn"):
-                st.session_state.admin_authenticated = False
-                st.rerun()
+        st.info("📧 E-Mail oben eintragen, um das vollständige Paket zu bestellen.")
 
-        st.markdown("### 📊 Gesammelte Leads")
-        if st.session_state.leads:
-            import pandas as pd
-            df = pd.DataFrame(st.session_state.leads)
-            st.dataframe(df, use_container_width=True)
-            csv_buffer = io.StringIO()
-            df.to_csv(csv_buffer, index=False, encoding="utf-8-sig")
-            st.download_button(
-                label="📥 Leads als CSV exportieren",
-                data=csv_buffer.getvalue().encode("utf-8-sig"),
-                file_name=f"geo_leads_{datetime.date.today()}.csv",
-                mime="text/csv",
-                use_container_width=True
-            )
-        else:
-            st.info("Noch keine Leads gesammelt.")
-
-
-# ── FOOTER ──
-st.markdown("""
-<div class="footer-bar">
-    <strong style="color:#c9a84c">Gernot Riedel Tourism Consulting</strong> &nbsp;|&nbsp;
-    TÜV-zertifizierter KI-Trainer &nbsp;|&nbsp;
-    kontakt@gernot-riedel.com &nbsp;|&nbsp;
-    +43 676 7237811
-</div>
-""", unsafe_allow_html=True)
+    # Footer
+    st.markdown(f"""
+    <div class="geo-footer">
+        Analyse durchgeführt am {datetime.now().strftime('%d.%m.%Y um %H:%M')} Uhr<br>
+        🤖 Erstellt mit KI-Unterstützung |
+        <a href="https://gernot-riedel.com" target="_blank">gernot-riedel.com</a> |
+        #GernotGoesAI #GernotGoesKI<br>
+        <small>Technische Checks = verifizierte Messwerte · KI-Einschätzungen sind keine Messwerte und können variieren.</small>
+    </div>
+    """, unsafe_allow_html=True)
