@@ -1287,7 +1287,7 @@ if st.session_state.analyse_running:
     sende_webhook(betrieb, ort, email, url, typ, score_passed, score_total, zusammenfassung, checks)
 
     # PDF generieren
-    pdf_bytes = generate_pdf(betrieb, ort, url, typ, checks, ai_result, score_passed, score_total)
+    pdf_bytes = generate_pdf(betrieb, ort, url, typ, checks, ai_result, score_passed, score_total, email)
 
     # PDF Download-Button
     st.markdown("""
