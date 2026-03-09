@@ -660,8 +660,26 @@ def sende_webhook(betrieb, ort, email, url, typ, score_passed, score_total, zusa
     except Exception:
         pass
 
-# ─── UI ───────────────────────────────────────────────────────────────────────
+# ─── SESSION STATE INIT ───────────────────────────────────────────────────────
+for key, default in [
+    ('analyse_running', False),
+    ('analyse_done', False),
+    ('checks', {}),
+    ('ai_result', None),
+    ('form_betrieb', ''),
+    ('form_ort', ''),
+    ('form_url', ''),
+    ('form_typ', 'Hotel (3–5 Sterne)'),
+    ('form_email', ''),
+    ('form_text', ''),
+    ('fetch_status', ''),
+    ('score_passed', 0),
+    ('score_total', 0),
+]:
+    if key not in st.session_state:
+        st.session_state[key] = default
 
+# ─── UI ───────────────────────────────────────────────────────────────────────
 st.markdown("""
 <div class="geo-header">
     <div class="geo-title">🏔️ GEO-Readiness Checker</div>
@@ -670,65 +688,77 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# ─── SESSION STATE INIT ───────────────────────────────────────────────────────
-if 'manueller_text' not in st.session_state:
-    st.session_state.manueller_text = ''
+# ─── FORMULAR (kein st.form — verhindert alle Submit-Bugs) ────────────────────
+st.markdown('<div class="form-card">', unsafe_allow_html=True)
 
-# ─── FORMULAR ─────────────────────────────────────────────────────────────────
-with st.form("analyse_form"):
-    st.markdown('<div class="form-card">', unsafe_allow_html=True)
+col1, col2 = st.columns(2)
+with col1:
+    betrieb = st.text_input("🏨 Betriebsname", placeholder="Hotel Kaiserlodge",
+                             value=st.session_state.form_betrieb, key="input_betrieb")
+    ort = st.text_input("📍 Ort / Region", placeholder="Scheffau am Wilden Kaiser, Tirol",
+                         value=st.session_state.form_ort, key="input_ort")
+with col2:
+    url_raw = st.text_input("🌐 Website-URL", placeholder="https://www.kaiserlodge.at",
+                             value=st.session_state.form_url, key="input_url")
+    typ = st.selectbox("🏷️ Betriebstyp", [
+        "Hotel (3–5 Sterne)", "Pension / B&B", "Ferienwohnung / Chalet",
+        "Resort / Wellness-Hotel", "Seilbahn / Bergbahn", "TVB / DMO", "Restaurant", "Sonstiges"
+    ], key="input_typ")
 
-    col1, col2 = st.columns(2)
-    with col1:
-        betrieb = st.text_input("🏨 Betriebsname", placeholder="Hotel Kaiserlodge",
-                                 key="betrieb_input")
-        ort = st.text_input("📍 Ort / Region", placeholder="Scheffau am Wilden Kaiser, Tirol",
-                             key="ort_input")
-    with col2:
-        url = st.text_input("🌐 Website-URL", placeholder="https://www.kaiserlodge.at",
-                             key="url_input")
-        typ = st.selectbox("🏷️ Betriebstyp", [
-            "Hotel (3–5 Sterne)", "Pension / B&B", "Ferienwohnung / Chalet",
-            "Resort / Wellness-Hotel", "Seilbahn / Bergbahn", "TVB / DMO", "Restaurant", "Sonstiges"
-        ], key="typ_input")
+email = st.text_input("📧 E-Mail für das vollständige Paket (optional)",
+                       placeholder="ihr@email.at",
+                       value=st.session_state.form_email, key="input_email")
 
-    email = st.text_input("📧 E-Mail für das vollständige Paket (optional)",
-                           placeholder="ihr@email.at", key="email_input")
-    st.markdown('</div>', unsafe_allow_html=True)
-    submitted = st.form_submit_button("🔍 GEO-Analyse starten", type="primary", use_container_width=True)
+with st.expander("✏️ Website-Text manuell eingeben — bei Bot-Schutz oder JS-Seiten"):
+    st.markdown("""
+    <div class="info-blocked">
+    <strong>Wann nötig?</strong> Viele Hotel-Websites blockieren automatischen Zugriff (Cloudflare, JS-Rendering).
+    Die technischen Checks (HTTPS, robots.txt, Schema etc.) funktionieren trotzdem.
+    Für die inhaltliche KI-Analyse: Startseite + Über uns + Zimmer-Text hier einfügen.
+    </div>
+    """, unsafe_allow_html=True)
+    manueller_text = st.text_area(
+        "Text einfügen:",
+        placeholder="Willkommen im Hotel...\nUnsere Zimmer...\nLage und Anreise...",
+        height=160,
+        value=st.session_state.form_text,
+        key="input_text"
+    )
 
-# Manueller Text AUSSERHALB des Forms (verhindert Streamlit-Bug mit expander+form)
-st.markdown("""
-<div class="info-blocked" style="margin-bottom:0.5rem;">
-✏️ <strong>Website-Text manuell eingeben</strong> — bei Bot-Schutz oder JavaScript-Seiten<br>
-<small>Viele Hotel-Websites blockieren automatischen Zugriff. Die technischen Checks funktionieren trotzdem.
-Für die inhaltliche KI-Analyse: wichtigste Texte (Startseite, Über uns, Zimmer) hier einfügen.</small>
-</div>
-""", unsafe_allow_html=True)
-manueller_text = st.text_area(
-    "Startseite + Über uns + Zimmer (copy-paste aus dem Browser):",
-    placeholder="Willkommen im Hotel Kaiserlodge...\nUnsere Zimmer und Suiten...\nLage und Anreise...",
-    height=150,
-    key="manueller_text",
-    label_visibility="collapsed"
-)
+st.markdown('</div>', unsafe_allow_html=True)
 
-# ─── ANALYSE ──────────────────────────────────────────────────────────────────
-if submitted:
-    # Werte aus session_state lesen — zuverlässiger als direkte Variablen nach Submit
-    betrieb = st.session_state.get('betrieb_input', betrieb).strip()
-    ort = st.session_state.get('ort_input', ort).strip()
-    url = st.session_state.get('url_input', url).strip()
-    typ = st.session_state.get('typ_input', typ)
-    email = st.session_state.get('email_input', email).strip()
-    manueller_text = st.session_state.get('manueller_text', '').strip()
+# ─── SUBMIT BUTTON ────────────────────────────────────────────────────────────
+if st.button("🔍 GEO-Analyse starten", type="primary", use_container_width=True):
+    b = st.session_state.input_betrieb.strip()
+    o = st.session_state.input_ort.strip()
+    u = st.session_state.input_url.strip()
 
-    if not betrieb or not ort or not url:
+    if not b or not o or not u:
         st.error("Bitte Betriebsname, Ort und URL ausfüllen.")
-        st.stop()
+    else:
+        # Werte in session_state speichern
+        st.session_state.form_betrieb = b
+        st.session_state.form_ort = o
+        st.session_state.form_url = u
+        st.session_state.form_typ = st.session_state.input_typ
+        st.session_state.form_email = st.session_state.input_email.strip()
+        st.session_state.form_text = st.session_state.input_text.strip()
+        st.session_state.analyse_done = False
+        st.session_state.analyse_running = True
+        st.rerun()
+
+# ─── ANALYSE (läuft nach rerun) ───────────────────────────────────────────────
+if st.session_state.analyse_running:
+    betrieb = st.session_state.form_betrieb
+    ort = st.session_state.form_ort
+    url = st.session_state.form_url
+    typ = st.session_state.form_typ
+    email = st.session_state.form_email
+    manueller_text = st.session_state.form_text
 
     if not url.startswith('http'):
         url = 'https://' + url
+        st.session_state.form_url = url
 
     # PHASE 1: Technische Checks
     with st.spinner("🔬 Technische Checks laufen..."):
@@ -885,8 +915,13 @@ if submitted:
                 ai_result = analyse_mit_claude(betrieb, ort, url, typ,
                                                website_text or f"Betrieb: {betrieb}, Ort: {ort}, Typ: {typ}",
                                                checks)
+                st.session_state.ai_result = ai_result
             except Exception as e:
                 st.warning(f"KI-Analyse konnte nicht abgeschlossen werden: {str(e)}")
+    
+    # Analyse abgeschlossen
+    st.session_state.analyse_running = False
+    st.session_state.analyse_done = True
 
     if ai_result:
         st.markdown('<div class="ai-section">', unsafe_allow_html=True)
