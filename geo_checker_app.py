@@ -13,6 +13,7 @@ import re
 import os
 import anthropic
 from datetime import datetime
+from fpdf import FPDF
 
 # ─── PAGE CONFIG ──────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -638,6 +639,207 @@ Antworte NUR mit diesem JSON (kein Text davor/danach):
     end = text.rfind("}") + 1
     return json.loads(text[start:end])
 
+
+# ─── PDF EXPORT ───────────────────────────────────────────────────────────────
+
+def generate_pdf(betrieb, ort, url, typ, checks, ai_result, score_passed, score_total):
+    """Generates a branded PDF report of the GEO analysis."""
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_auto_page_break(auto=True, margin=15)
+
+    # ── Header ──
+    pdf.set_fill_color(13, 98, 72)  # Dark Green #0d6248
+    pdf.rect(0, 0, 210, 40, 'F')
+    pdf.set_text_color(255, 255, 255)
+    pdf.set_font("Helvetica", "B", 20)
+    pdf.set_xy(10, 8)
+    pdf.cell(0, 10, "GEO-Readiness Checker", ln=True)
+    pdf.set_font("Helvetica", "", 11)
+    pdf.set_xy(10, 20)
+    pdf.cell(0, 7, f"Analyse fuer: {betrieb} | {ort}", ln=True)
+    pdf.set_font("Helvetica", "", 9)
+    pdf.set_xy(10, 29)
+    pdf.cell(0, 6, f"gernot-riedel.com | kontakt@gernot-riedel.com | +43 676 7237811", ln=True)
+
+    # ── Date & URL ──
+    pdf.set_text_color(44, 44, 39)
+    pdf.set_xy(10, 46)
+    pdf.set_font("Helvetica", "", 9)
+    pdf.set_text_color(130, 130, 130)
+    pdf.cell(0, 5, f"Erstellt am: {datetime.now().strftime('%d.%m.%Y um %H:%M')} Uhr  |  Website: {url}  |  Typ: {typ}", ln=True)
+    pdf.ln(3)
+
+    # ── Score Box ──
+    verdict = "Gut aufgestellt" if score_passed/max(score_total,1) >= 0.8 else "Verbesserungspotenzial" if score_passed/max(score_total,1) >= 0.55 else "Handlungsbedarf"
+    pdf.set_fill_color(232, 245, 240)
+    pdf.set_draw_color(13, 98, 72)
+    pdf.set_line_width(0.5)
+    pdf.rect(10, pdf.get_y(), 190, 18, 'FD')
+    pdf.set_xy(10, pdf.get_y() + 3)
+    pdf.set_font("Helvetica", "B", 14)
+    pdf.set_text_color(13, 98, 72)
+    pdf.cell(0, 6, f"Technische Checks: {score_passed}/{score_total} bestanden  —  {verdict}", ln=True)
+    pdf.set_xy(10, pdf.get_y())
+    pdf.set_font("Helvetica", "I", 8)
+    pdf.set_text_color(100, 100, 100)
+    pdf.cell(0, 4, "Verifizierte Messwerte — reproduzierbar und nachvollziehbar", ln=True)
+    pdf.ln(5)
+
+    # ── Section helper ──
+    def section_title(title):
+        pdf.set_fill_color(13, 98, 72)
+        pdf.set_text_color(255, 255, 255)
+        pdf.set_font("Helvetica", "B", 11)
+        pdf.cell(0, 8, f"  {title}", ln=True, fill=True)
+        pdf.set_text_color(44, 44, 39)
+        pdf.ln(2)
+
+    def check_row(icon, name, detail, badge):
+        pdf.set_font("Helvetica", "B", 9)
+        pdf.set_text_color(44, 44, 39)
+        safe_name = name.encode('latin-1', 'replace').decode('latin-1')
+        pdf.cell(8, 6, icon)
+        pdf.cell(60, 6, safe_name)
+        pdf.set_font("Helvetica", "I", 8)
+        pdf.set_text_color(100, 100, 100)
+        pdf.cell(25, 6, f"[{badge}]")
+        pdf.set_font("Helvetica", "", 8)
+        safe_detail = detail[:90].encode('latin-1', 'replace').decode('latin-1')
+        pdf.cell(0, 6, safe_detail, ln=True)
+        pdf.set_text_color(44, 44, 39)
+
+    # ── Technische Checkliste ──
+    section_title("Technische Checkliste")
+    check_order = ['https', 'load_time', 'title', 'meta_desc', 'viewport',
+                   'lang', 'canonical', 'schema', 'robots', 'sitemap']
+    for key in check_order:
+        chk = checks.get(key, {})
+        if not chk:
+            continue
+        if chk.get('is_robots'):
+            blocked = chk.get('detail_blocked', [])
+            icon = "OK" if chk.get('pass') else ("??" if not chk.get('exists') else "!!")
+            detail = "Alle KI-Bots erlaubt" if chk.get('pass') else f"Blockiert: {', '.join(blocked)}" if blocked else "robots.txt fehlt"
+        else:
+            p = chk.get('pass')
+            icon = "OK" if p else ("??" if p is None else "!!")
+            detail = chk.get('detail', '')
+        check_row(icon, chk.get('name', key), detail, "Gemessen")
+    pdf.ln(4)
+
+    # ── Robots.txt Detail ──
+    robots = checks.get('robots', {})
+    if robots.get('exists'):
+        blocked = robots.get('detail_blocked', [])
+        if blocked:
+            section_title("!! KI-Bots blockiert — Sofortiger Handlungsbedarf")
+            pdf.set_font("Helvetica", "", 9)
+            pdf.set_text_color(180, 0, 0)
+            bot_str = ', '.join(blocked).encode('latin-1', 'replace').decode('latin-1')
+            pdf.multi_cell(0, 6, f"Folgende KI-Systeme koennen diese Website laut robots.txt NICHT lesen: {bot_str}")
+            pdf.set_text_color(44, 44, 39)
+            pdf.ln(3)
+        else:
+            section_title("KI-Bot-Zugang (robots.txt)")
+            pdf.set_font("Helvetica", "", 9)
+            pdf.set_text_color(13, 98, 72)
+            pdf.cell(0, 6, "Alle KI-Bots (ChatGPT, Claude, Perplexity etc.) haben Zugang.", ln=True)
+            pdf.set_text_color(44, 44, 39)
+            pdf.ln(3)
+
+    # ── KI-Analyse ──
+    if ai_result:
+        section_title("Inhaltliche KI-Analyse  [KI-Einschaetzung]")
+        pdf.set_font("Helvetica", "I", 8)
+        pdf.set_text_color(130, 100, 0)
+        pdf.cell(0, 5, "Diese Bewertungen basieren auf Claude's Analyse des Website-Textes — keine Messwerte.", ln=True)
+        pdf.set_text_color(44, 44, 39)
+        pdf.ln(2)
+
+        text_bew = ai_result.get('text_bewertung', {})
+        labels = {'usp_klarheit': 'USP-Klarheit', 'lokale_signale': 'Lokale Signale',
+                  'zielgruppen_klarheit': 'Zielgruppen-Klarheit', 'faq_potential': 'FAQ-Potenzial'}
+        for k, label in labels.items():
+            item = text_bew.get(k, {})
+            score = item.get('score', 0)
+            kommentar = item.get('kommentar', '')
+            bar = ("+" * score) + ("-" * (10 - score))
+            pdf.set_font("Helvetica", "B", 9)
+            safe_label = f"{label} — {score}/10  [{bar}]"
+            pdf.cell(0, 6, safe_label.encode('latin-1', 'replace').decode('latin-1'), ln=True)
+            pdf.set_font("Helvetica", "", 8)
+            pdf.set_text_color(80, 80, 80)
+            safe_k = kommentar[:120].encode('latin-1', 'replace').decode('latin-1')
+            pdf.multi_cell(0, 5, safe_k)
+            pdf.set_text_color(44, 44, 39)
+            pdf.ln(1)
+
+        zusammenfassung = ai_result.get('zusammenfassung', '')
+        if zusammenfassung:
+            pdf.ln(2)
+            pdf.set_font("Helvetica", "BI", 9)
+            pdf.cell(0, 6, "Fazit:", ln=True)
+            pdf.set_font("Helvetica", "I", 9)
+            pdf.set_text_color(60, 60, 60)
+            safe_z = zusammenfassung.encode('latin-1', 'replace').decode('latin-1')
+            pdf.multi_cell(0, 5, safe_z)
+            pdf.set_text_color(44, 44, 39)
+            pdf.ln(3)
+
+        # Quick Wins
+        section_title("Quick Wins — sofort umsetzbar")
+        for qw in ai_result.get('quickwins', []):
+            prio = qw.get('prioritaet', 'MITTEL')
+            massnahme = qw.get('massnahme', '').encode('latin-1', 'replace').decode('latin-1')
+            impact = qw.get('impact', '').encode('latin-1', 'replace').decode('latin-1')
+            pdf.set_font("Helvetica", "B", 9)
+            if prio == 'HOCH':
+                pdf.set_text_color(180, 0, 0)
+            else:
+                pdf.set_text_color(180, 100, 0)
+            pdf.cell(20, 6, f"[{prio}]")
+            pdf.set_text_color(44, 44, 39)
+            pdf.set_font("Helvetica", "", 9)
+            pdf.multi_cell(0, 6, massnahme)
+            pdf.set_font("Helvetica", "I", 8)
+            pdf.set_text_color(80, 80, 80)
+            pdf.cell(20, 5, "")
+            pdf.multi_cell(0, 5, f"Wirkung: {impact}")
+            pdf.set_text_color(44, 44, 39)
+            pdf.ln(1)
+
+    # ── Upsell ──
+    pdf.ln(4)
+    pdf.set_fill_color(240, 247, 244)
+    pdf.set_draw_color(13, 98, 72)
+    pdf.rect(10, pdf.get_y(), 190, 28, 'FD')
+    pdf.set_xy(10, pdf.get_y() + 3)
+    pdf.set_font("Helvetica", "B", 11)
+    pdf.set_text_color(13, 98, 72)
+    pdf.cell(0, 7, "GEO-Optimierungspaket Professional — EUR 149", ln=True)
+    pdf.set_xy(14, pdf.get_y())
+    pdf.set_font("Helvetica", "", 9)
+    pdf.set_text_color(44, 44, 39)
+    pdf.cell(0, 5, "7 fertige Texte: FAQ, H1+Subheadline, USP-Kacheln, 20 Keywords, Google Business,", ln=True)
+    pdf.set_xy(14, pdf.get_y())
+    pdf.cell(0, 5, "3 Meta-Descriptions, Ueber-uns-Text  |  Lieferung in 24h  |  kontakt@gernot-riedel.com", ln=True)
+
+    # ── Footer ──
+    pdf.set_y(-18)
+    pdf.set_fill_color(13, 98, 72)
+    pdf.rect(0, pdf.get_y(), 210, 20, 'F')
+    pdf.set_text_color(255, 255, 255)
+    pdf.set_font("Helvetica", "", 8)
+    pdf.set_xy(10, pdf.get_y() + 4)
+    pdf.cell(0, 5, "Gernot Riedel Tourism Consulting  |  gernot-riedel.com  |  kontakt@gernot-riedel.com  |  #GernotGoesAI #GernotGoesKI", ln=True)
+    pdf.set_xy(10, pdf.get_y())
+    pdf.set_font("Helvetica", "I", 7)
+    pdf.set_text_color(200, 230, 220)
+    pdf.cell(0, 4, "Technische Checks = verifizierte Messwerte. KI-Einschaetzungen sind Ergaenzungen, keine Messwerte.", ln=True)
+
+    return bytes(pdf.output())
+
 # ─── ZAPIER WEBHOOK ───────────────────────────────────────────────────────────
 
 def sende_webhook(betrieb, ort, email, url, typ, score_passed, score_total, zusammenfassung, checks):
@@ -705,8 +907,8 @@ with col2:
         "Resort / Wellness-Hotel", "Seilbahn / Bergbahn", "TVB / DMO", "Restaurant", "Sonstiges"
     ], key="input_typ")
 
-email = st.text_input("📧 E-Mail für das vollständige Paket (optional)",
-                       placeholder="ihr@email.at",
+email = st.text_input("📧 Ihre E-Mail-Adresse * (Pflichtfeld — für die Zusendung Ihrer Analyse)",
+                       placeholder="ihre@email.at  ← Pflichtfeld",
                        value=st.session_state.form_email, key="input_email")
 
 with st.expander("✏️ Website-Text manuell eingeben — bei Bot-Schutz oder JS-Seiten"):
@@ -733,8 +935,12 @@ if st.button("🔍 GEO-Analyse starten", type="primary", use_container_width=Tru
     o = st.session_state.input_ort.strip()
     u = st.session_state.input_url.strip()
 
-    if not b or not o or not u:
-        st.error("Bitte Betriebsname, Ort und URL ausfüllen.")
+    e = st.session_state.input_email.strip()
+    if not b or not o or not u or not e:
+        if not b or not o or not u:
+            st.error("Bitte Betriebsname, Ort und URL ausfüllen.")
+        if not e:
+            st.error("📧 Bitte E-Mail-Adresse eingeben — Ihre kostenlose Analyse wird dorthin gesendet.")
     else:
         # Werte in session_state speichern
         st.session_state.form_betrieb = b
@@ -984,10 +1190,37 @@ if st.session_state.analyse_running:
             </div>
             """, unsafe_allow_html=True)
 
-    # PHASE 6: Paket-Teaser
+    # PHASE 6: Lead-Webhook + PDF Download + Upsell
     st.divider()
-    st.subheader("📦 GEO-Optimierungspaket Professional — €149")
-    st.markdown("*7 fertig formulierte Texte und Optimierungen — sofort auf der Website einsetzbar:*")
+
+    # Lead automatisch senden (Analyse ist kostenlos, E-Mail wurde gesammelt)
+    zusammenfassung = ai_result.get('zusammenfassung', '') if ai_result else ''
+    sende_webhook(betrieb, ort, email, url, typ, score_passed, score_total, zusammenfassung, checks)
+
+    # PDF generieren
+    pdf_bytes = generate_pdf(betrieb, ort, url, typ, checks, ai_result, score_passed, score_total)
+
+    # PDF Download-Button
+    st.markdown("""
+    <div class="robots-ok" style="text-align:center;">
+    ✅ <strong>Ihre kostenlose GEO-Analyse ist fertig!</strong><br>
+    <small>Laden Sie Ihre Analyse als PDF herunter — direkt ausdruckbar und teilbar.</small>
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.download_button(
+        label="📄  Analyse als PDF herunterladen (kostenlos)",
+        data=pdf_bytes,
+        file_name=f"GEO-Analyse_{betrieb.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.pdf",
+        mime="application/pdf",
+        use_container_width=True,
+    )
+
+    st.markdown("")
+
+    # Upsell: €149 Paket
+    st.subheader("📦 Möchten Sie mehr? GEO-Optimierungspaket Professional — €149")
+    st.markdown("*Die Analyse zeigt das Problem — das Paket liefert die fertigen Lösungstexte:*")
 
     teaser = [
         ("❓", "10 FAQ-Antworten"), ("📝", "H1 + Subheadline"),
@@ -1007,18 +1240,15 @@ if st.session_state.analyse_running:
 
     st.markdown("")
 
-    if email.strip():
-        if st.button("🛒  Jetzt für €149 bestellen — Lieferung in 24 Stunden", type="primary", use_container_width=True):
-            zusammenfassung = ai_result.get('zusammenfassung', '') if ai_result else ''
-            sende_webhook(betrieb, ort, email, url, typ, score_passed, score_total, zusammenfassung, checks)
-            st.success("""
-            ✅ **Vielen Dank — Ihre Bestellung ist eingegangen!**
+    if st.button("🛒  Jetzt für €149 bestellen — Lieferung in 24 Stunden", use_container_width=True):
+        st.success("""
+        ✅ **Vielen Dank — Ihre Bestellung ist eingegangen!**
 
-            Sie erhalten das vollständige GEO-Optimierungspaket mit allen 7 Lieferungen innerhalb von 24 Stunden per E-Mail.
-            Bei Fragen: kontakt@gernot-riedel.com | +43 676 7237811
-            """)
-    else:
-        st.info("📧 E-Mail oben eintragen, um das vollständige Paket zu bestellen.")
+        Sie erhalten das vollständige GEO-Optimierungspaket mit allen 7 fertigen Texten
+        innerhalb von 24 Stunden per E-Mail.
+
+        Bei Fragen: kontakt@gernot-riedel.com | +43 676 7237811
+        """)
 
     # Footer
     st.markdown(f"""
