@@ -83,6 +83,12 @@ html, body, [class*="css"] { font-family: 'DM Sans', sans-serif; }
 .cta-box h3 { color:#c9a84c; font-size:22px; margin:0 0 10px; }
 .cta-box p  { opacity:0.85; font-size:15px; margin:0 0 18px; }
 
+.category-header {
+    background:#f8f6f0; border-left:4px solid #c9a84c;
+    padding:8px 14px; margin:18px 0 8px; border-radius:4px;
+    font-weight:600; font-size:15px; color:#1a2332;
+}
+
 .footer-bar {
     background:#1a2332; color:rgba(255,255,255,0.6);
     text-align:center; padding:16px; border-radius:6px;
@@ -122,7 +128,7 @@ def write_lead_to_sheet(data: dict) -> bool:
         sheet = get_sheet()
         if sheet.row_count < 1 or sheet.cell(1, 1).value != "Datum":
             sheet.insert_row(
-                ["Datum", "Betrieb", "Ort", "E-Mail", "Website", "Typ", "Score", "Score %"],
+                ["Datum", "Betrieb", "Ort", "E-Mail", "Website", "Typ", "Score", "Max", "Score %"],
                 index=1
             )
         sheet.append_row([
@@ -133,7 +139,8 @@ def write_lead_to_sheet(data: dict) -> bool:
             data.get("website", ""),
             data.get("typ", ""),
             data.get("score", 0),
-            f"{round(data.get('score', 0) / 20 * 100)}%",
+            MAX_SCORE,
+            f"{round(data.get('score', 0) / MAX_SCORE * 100)}%",
         ])
         return True
     except Exception as e:
@@ -146,7 +153,7 @@ def write_lead_to_sheet(data: dict) -> bool:
 # ══════════════════════════════════════════════════════
 
 def check_website(url: str) -> dict:
-    """Misst alle 10 technischen GEO-Faktoren direkt und verifizierbar."""
+    """Misst alle 18 technischen GEO- und KI-Readiness-Faktoren direkt und verifizierbar."""
     parsed = urlparse(url)
     base   = f"{parsed.scheme}://{parsed.netloc}"
     facts  = {"https": parsed.scheme == "https"}
@@ -244,95 +251,283 @@ def check_website(url: str) -> dict:
     # Schema.org
     facts["schema_org"] = "schema.org" in raw_html.lower()
 
+    # ─── NEW GEO & KI CHECKS ───
+
+    # Open Graph Tags (og:title, og:description, og:image)
+    og_title = re.search(r'<meta\s+(?:property|name)=["\']og:title["\']\s+content=["\'](.*?)["\']', raw_html, re.I) or \
+               re.search(r'<meta\s+content=["\'](.*?)["\']\s+(?:property|name)=["\']og:title["\']', raw_html, re.I)
+    og_desc = re.search(r'<meta\s+(?:property|name)=["\']og:description["\']\s+content=["\'](.*?)["\']', raw_html, re.I) or \
+              re.search(r'<meta\s+content=["\'](.*?)["\']\s+(?:property|name)=["\']og:description["\']', raw_html, re.I)
+    og_image = re.search(r'<meta\s+(?:property|name)=["\']og:image["\']\s+content=["\'](.*?)["\']', raw_html, re.I) or \
+               re.search(r'<meta\s+content=["\'](.*?)["\']\s+(?:property|name)=["\']og:image["\']', raw_html, re.I)
+    og_parts = []
+    if og_title:  og_parts.append("og:title")
+    if og_desc:   og_parts.append("og:description")
+    if og_image:  og_parts.append("og:image")
+    facts["og_tags_found"] = og_parts
+    facts["og_ok"] = len(og_parts) >= 2  # At least title + description
+
+    # H1 Heading
+    h1_matches = re.findall(r'<h1[^>]*>(.*?)</h1>', raw_html, re.I | re.DOTALL)
+    facts["h1_count"] = len(h1_matches)
+    facts["h1_text"] = re.sub(r'<[^>]+>', '', h1_matches[0]).strip() if h1_matches else ""
+    facts["h1_ok"] = len(h1_matches) == 1 and bool(facts["h1_text"])
+
+    # Image Alt Texts
+    all_images = re.findall(r'<img\b[^>]*>', raw_html, re.I)
+    images_with_alt = [img for img in all_images if re.search(r'\balt=["\'][^"\']+["\']', img, re.I)]
+    facts["img_total"] = len(all_images)
+    facts["img_with_alt"] = len(images_with_alt)
+    facts["img_alt_pct"] = round(len(images_with_alt) / len(all_images) * 100) if all_images else 100
+    facts["img_alt_ok"] = facts["img_alt_pct"] >= 80
+
+    # JSON-LD Structured Data (preferred by AI engines over microdata/RDFa)
+    jsonld_blocks = re.findall(r'<script[^>]+type=["\']application/ld\+json["\'][^>]*>(.*?)</script>', raw_html, re.I | re.DOTALL)
+    facts["jsonld_count"] = len(jsonld_blocks)
+    facts["jsonld_ok"] = len(jsonld_blocks) > 0
+    # Detect schema types in JSON-LD
+    jsonld_types = []
+    for block in jsonld_blocks:
+        types = re.findall(r'"@type"\s*:\s*"([^"]+)"', block)
+        jsonld_types.extend(types)
+    facts["jsonld_types"] = jsonld_types
+
+    # Sufficient Text Content (word count)
+    text_only = re.sub(r'<script[^>]*>.*?</script>', '', raw_html, flags=re.I | re.DOTALL)
+    text_only = re.sub(r'<style[^>]*>.*?</style>', '', text_only, flags=re.I | re.DOTALL)
+    text_only = re.sub(r'<[^>]+>', ' ', text_only)
+    text_only = re.sub(r'\s+', ' ', text_only).strip()
+    words = [w for w in text_only.split() if len(w) > 1]
+    facts["word_count"] = len(words)
+    facts["content_ok"] = len(words) >= 300
+
+    # Meta Robots / Indexability
+    meta_robots = re.search(r'<meta\s+name=["\']robots["\']\s+content=["\'](.*?)["\']', raw_html, re.I) or \
+                  re.search(r'<meta\s+content=["\'](.*?)["\']\s+name=["\']robots["\']', raw_html, re.I)
+    robots_content = meta_robots.group(1).lower() if meta_robots else ""
+    facts["meta_robots"] = robots_content
+    facts["noindex"] = "noindex" in robots_content
+    facts["nofollow"] = "nofollow" in robots_content
+    facts["indexable_ok"] = not facts["noindex"]
+
+    # Hreflang Tags (multilingual / international targeting)
+    hreflang_matches = re.findall(r'<link[^>]+hreflang=["\']([^"\']+)["\']', raw_html, re.I)
+    facts["hreflang_langs"] = list(set(hreflang_matches))
+    facts["hreflang_ok"] = len(hreflang_matches) > 0
+
+    # Internal Links
+    all_links = re.findall(r'<a\b[^>]+href=["\']([^"\'#]+)["\']', raw_html, re.I)
+    internal_links = [l for l in all_links if l.startswith("/") or parsed.netloc in l]
+    facts["internal_link_count"] = len(internal_links)
+    facts["internal_links_ok"] = len(internal_links) >= 3
+
     return facts
 
 
 def build_checks(facts: dict) -> list:
-    """Erstellt die 10 Checkpunkte mit Ergebnis und Quick-Win-Hinweis."""
+    """Erstellt die 18 Checkpunkte mit Ergebnis und Quick-Win-Hinweis."""
     bots_ok = len(facts.get("blocked_bots", [])) == 0
+
+    # Image alt text detail
+    img_total = facts.get("img_total", 0)
+    img_alt   = facts.get("img_with_alt", 0)
+    img_pct   = facts.get("img_alt_pct", 100)
+
+    # JSON-LD detail
+    jsonld_types = facts.get("jsonld_types", [])
+    jsonld_detail = f'{facts.get("jsonld_count", 0)} Block(s)'
+    if jsonld_types:
+        jsonld_detail += f' — Typen: {", ".join(jsonld_types[:5])}'
+
+    # OG tags detail
+    og_found = facts.get("og_tags_found", [])
+
     return [
+        # ── SECTION: Technische Basis ──
         {
             "name":     "HTTPS-Verschlüsselung",
             "ok":       facts.get("https", False),
             "detail":   "Aktiv" if facts.get("https") else "Nicht aktiv",
             "quickwin": "HTTPS aktivieren — Pflicht für jede moderne Website und Vertrauenssignal für KI-Systeme.",
-            "impact":   "Sicherheit & Vertrauen"
+            "howto":    "Kontaktieren Sie Ihren Webhoster (z.B. World4You, All-Inkl, Strato) und fragen Sie nach einem kostenlosen SSL-Zertifikat (Let's Encrypt). Die meisten Hoster aktivieren das per Klick im Kundenmenü. Bei WordPress-Seiten danach unter Einstellungen → Allgemein die URL auf https:// ändern.",
+            "impact":   "Sicherheit & Vertrauen",
+            "category": "Technische Basis",
         },
         {
             "name":     "Ladezeit unter 3 Sekunden",
             "ok":       facts.get("load_ok", False),
             "detail":   (f"{facts['load_time']}s" if facts.get("load_time") else "Nicht messbar"),
             "quickwin": f"Ladezeit optimieren (aktuell {facts.get('load_time','?')}s) — KI-Crawler bevorzugen schnell ladende Seiten.",
-            "impact":   "Crawlbarkeit & User Experience"
-        },
-        {
-            "name":     "Meta-Description vorhanden",
-            "ok":       facts.get("meta_desc_ok", False),
-            "detail":   f'"{facts["meta_desc"][:60]}…"' if facts.get("meta_desc_ok") else "Fehlt",
-            "quickwin": "Meta-Description ergänzen — kurze, keyword-reiche Beschreibung (max. 155 Zeichen) für jede Seite.",
-            "impact":   "KI-Zitierbarkeit & Klickrate"
+            "howto":    "Die häufigsten Ursachen für langsame Seiten: (1) Bilder komprimieren — laden Sie Ihre Bilder auf tinypng.com hoch und ersetzen Sie die Originale. (2) Bei WordPress: ein Caching-Plugin installieren (z.B. WP Super Cache oder LiteSpeed Cache). (3) Prüfen Sie, ob Ihr Hosting-Paket ausreichend Leistung hat — bei sehr günstigen Paketen kann ein Upgrade auf SSD-Hosting helfen.",
+            "impact":   "Crawlbarkeit & User Experience",
+            "category": "Technische Basis",
         },
         {
             "name":     "Mobile Viewport-Tag",
             "ok":       facts.get("viewport", False),
             "detail":   "Vorhanden" if facts.get("viewport") else "Fehlt",
-            "quickwin": 'Viewport-Tag im HTML-Head ergänzen: <meta name="viewport" content="width=device-width, initial-scale=1">',
-            "impact":   "Mobile Sichtbarkeit"
+            "quickwin": "Viewport-Tag fehlt — Ihre Seite wird auf Smartphones nicht korrekt dargestellt.",
+            "howto":    "Ihr Webentwickler muss eine Zeile im HTML-Kopfbereich (Head) ergänzen: <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">. Bei WordPress-Themes ist das normalerweise automatisch enthalten — prüfen Sie, ob Ihr Theme aktuell ist. Falls Sie einen Baukastensystem wie Jimdo oder Wix nutzen, ist es meist automatisch gesetzt.",
+            "impact":   "Mobile Sichtbarkeit",
+            "category": "Technische Basis",
         },
         {
-            "name":     "Sprach-Attribut (lang=)",
-            "ok":       facts.get("lang_ok", False),
-            "detail":   f'lang="{facts["lang"]}"' if facts.get("lang_ok") else "Fehlt",
-            "quickwin": 'Sprache im HTML-Tag definieren: <html lang="de"> — wichtig für sprachspezifische KI-Antworten.',
-            "impact":   "Sprachliche Einordnung"
+            "name":     "Indexierbarkeit (Meta Robots)",
+            "ok":       facts.get("indexable_ok", True),
+            "detail":   "Indexierung erlaubt" if facts.get("indexable_ok", True) else f"BLOCKIERT — {facts.get('meta_robots', '')}",
+            "quickwin": "ACHTUNG: Ihre Seite blockiert aktiv die Indexierung! Suchmaschinen UND KI-Systeme dürfen Ihre Seite nicht anzeigen.",
+            "howto":    "Das passiert oft, wenn die Website nach einem Relaunch versehentlich auf 'noindex' steht. Bei WordPress: Gehen Sie zu Einstellungen → Lesen und deaktivieren Sie 'Suchmaschinen davon abhalten, diese Website zu indexieren'. Bei anderen Systemen: Bitten Sie Ihren Webentwickler, den noindex-Tag aus dem HTML-Head zu entfernen. Das ist die wichtigste Maßnahme — ohne diese Änderung sind alle anderen Optimierungen wirkungslos!",
+            "impact":   "Sichtbarkeit — kritisch",
+            "category": "Technische Basis",
         },
-        {
-            "name":     "Page Title vorhanden",
-            "ok":       facts.get("title_ok", False),
-            "detail":   f'"{facts["page_title"][:50]}…"' if facts.get("title_ok") else "Fehlt",
-            "quickwin": "Page Title ergänzen — keyword-reich, max. 60 Zeichen, einzigartig pro Seite.",
-            "impact":   "KI-Zitierbarkeit & Auffindbarkeit"
-        },
-        {
-            "name":     "Canonical Tag gesetzt",
-            "ok":       facts.get("canonical_ok", False),
-            "detail":   "Vorhanden" if facts.get("canonical_ok") else "Fehlt",
-            "quickwin": "Canonical Tag ergänzen — verhindert Duplicate Content und signalisiert die bevorzugte URL.",
-            "impact":   "Technische SEO & KI-Indexierung"
-        },
-        {
-            "name":     "Schema.org Markup",
-            "ok":       facts.get("schema_org", False),
-            "detail":   "Gefunden" if facts.get("schema_org") else "Nicht gefunden",
-            "quickwin": "Schema.org Markup implementieren (z.B. Hotel, LodgingBusiness) — strukturierte Daten sind der wichtigste Faktor für KI-Zitierbarkeit.",
-            "impact":   "KI-Zitierbarkeit — höchste Priorität"
-        },
+        # ── SECTION: Crawlbarkeit & Indexierung ──
         {
             "name":     "robots.txt — KI-Bots erlaubt",
             "ok":       bots_ok,
             "detail":   "Alle KI-Bots erlaubt" if bots_ok else f"{len(facts.get('blocked_bots',[]))} Bot(s) blockiert",
-            "quickwin": "robots.txt anpassen — GPTBot, ClaudeBot, PerplexityBot und Google-Extended dürfen crawlen.",
-            "impact":   "KI-Sichtbarkeit direkt"
+            "quickwin": "robots.txt anpassen — GPTBot, ClaudeBot, PerplexityBot und Google-Extended müssen crawlen dürfen.",
+            "howto":    "Die robots.txt ist eine einfache Textdatei im Hauptverzeichnis Ihrer Website. Bitten Sie Ihren Webentwickler, folgende Einträge NICHT zu blockieren: GPTBot, ClaudeBot, PerplexityBot, Google-Extended. Konkret bedeutet das: Es darf KEIN 'Disallow: /' für diese Bots stehen. Falls Sie unsicher sind, schicken Sie Ihrem Webentwickler einfach diesen Check-Bericht.",
+            "impact":   "KI-Sichtbarkeit direkt",
+            "category": "Crawlbarkeit & Indexierung",
         },
         {
             "name":     "sitemap.xml vorhanden",
             "ok":       facts.get("sitemap_exists", False),
             "detail":   "Gefunden" if facts.get("sitemap_exists") else "Nicht gefunden",
-            "quickwin": "sitemap.xml erstellen und in robots.txt verlinken — hilft KI-Crawlern alle Seiten zu finden.",
-            "impact":   "Vollständige Indexierung"
+            "quickwin": "sitemap.xml erstellen — das ist wie ein Inhaltsverzeichnis Ihrer Website für KI-Crawler.",
+            "howto":    "Bei WordPress: Installieren Sie das Plugin 'Yoast SEO' oder 'Rank Math' — beide erstellen automatisch eine Sitemap unter IhreWebsite.at/sitemap.xml. Bei anderen Systemen: Nutzen Sie xml-sitemaps.com, um kostenlos eine Sitemap zu erzeugen, und laden Sie die Datei ins Hauptverzeichnis Ihrer Website hoch. Danach in der robots.txt ergänzen: Sitemap: https://www.ihre-website.at/sitemap.xml",
+            "impact":   "Vollständige Indexierung",
+            "category": "Crawlbarkeit & Indexierung",
+        },
+        {
+            "name":     "Canonical Tag gesetzt",
+            "ok":       facts.get("canonical_ok", False),
+            "detail":   "Vorhanden" if facts.get("canonical_ok") else "Fehlt",
+            "quickwin": "Canonical Tag ergänzen — das verhindert, dass KI-Systeme Ihre Inhalte doppelt oder falsch zuordnen.",
+            "howto":    "Der Canonical Tag sagt Suchmaschinen und KI: 'Das ist die Original-Adresse dieser Seite.' Bei WordPress: Yoast SEO oder Rank Math setzen diesen Tag automatisch. Bei anderen Systemen: Ihr Webentwickler muss im HTML-Head jeder Seite ergänzen: <link rel=\"canonical\" href=\"https://www.ihre-website.at/aktuelle-seite/\">. Die URL muss jeweils die aktuelle Seitenadresse sein.",
+            "impact":   "Technische SEO & KI-Indexierung",
+            "category": "Crawlbarkeit & Indexierung",
+        },
+        {
+            "name":     "Interne Verlinkung (min. 3 Links)",
+            "ok":       facts.get("internal_links_ok", False),
+            "detail":   f'{facts.get("internal_link_count", 0)} interne Links gefunden' if facts.get("internal_links_ok") else f'Nur {facts.get("internal_link_count", 0)} interne Links',
+            "quickwin": "Mehr interne Links setzen — KI-Crawler folgen diesen Links, um Ihren Betrieb besser zu verstehen.",
+            "howto":    "Verlinken Sie auf Ihrer Startseite zu den wichtigsten Unterseiten: Zimmer/Wohnungen, Preise, Lage/Anreise, Aktivitäten, Kontakt. Jeder Link hilft KI-Systemen, mehr über Ihr Angebot zu erfahren. Konkret: Schreiben Sie z.B. 'Entdecken Sie unsere Zimmer' und verlinken Sie den Text auf die Zimmer-Seite. Mindestens 3-5 interne Links auf der Startseite sind empfohlen.",
+            "impact":   "Crawl-Tiefe & Kontext",
+            "category": "Crawlbarkeit & Indexierung",
+        },
+        # ── SECTION: KI-Zitierbarkeit & Inhalte ──
+        {
+            "name":     "Meta-Description vorhanden",
+            "ok":       facts.get("meta_desc_ok", False),
+            "detail":   f'"{facts["meta_desc"][:60]}…"' if facts.get("meta_desc_ok") else "Fehlt",
+            "quickwin": "Meta-Description fehlt — das ist der kurze Vorschautext, den KI-Systeme als Zusammenfassung nutzen.",
+            "howto":    "Schreiben Sie eine kurze, ansprechende Beschreibung Ihres Betriebs in max. 155 Zeichen. Beispiel: '4-Sterne Wellnesshotel in Kitzbühel mit Panorama-Spa, regionaler Küche und direktem Zugang zu 170 km Skipisten.' Bei WordPress: Im Yoast SEO Plugin unter jeder Seite die 'Meta-Beschreibung' ausfüllen. Bei anderen Systemen: Ihr Webentwickler fügt im HTML-Head ein: <meta name=\"description\" content=\"Ihr Text hier\">",
+            "impact":   "KI-Zitierbarkeit & Klickrate",
+            "category": "KI-Zitierbarkeit & Inhalte",
+        },
+        {
+            "name":     "Page Title vorhanden",
+            "ok":       facts.get("title_ok", False),
+            "detail":   f'"{facts["page_title"][:50]}…"' if facts.get("title_ok") else "Fehlt",
+            "quickwin": "Page Title fehlt oder ist unzureichend — der Seitentitel ist Ihre 'Visitenkarte' für KI-Systeme.",
+            "howto":    "Der Seitentitel sollte Ihren Betriebsnamen, den Ort und Ihr Alleinstellungsmerkmal enthalten. Beispiel: 'Hotel Alpenstern Kitzbühel | 4-Sterne Wellness & Ski'. Maximum 60 Zeichen. Bei WordPress: Den Titel im Yoast SEO Plugin bearbeiten. Bei anderen Systemen: Im HTML-Head den <title>-Tag anpassen. Jede Seite braucht einen eigenen, einzigartigen Titel!",
+            "impact":   "KI-Zitierbarkeit & Auffindbarkeit",
+            "category": "KI-Zitierbarkeit & Inhalte",
+        },
+        {
+            "name":     "H1-Überschrift vorhanden",
+            "ok":       facts.get("h1_ok", False),
+            "detail":   (f'"{facts["h1_text"][:50]}…"' if facts.get("h1_ok")
+                         else (f'{facts.get("h1_count", 0)} H1-Tags gefunden (genau 1 empfohlen)' if facts.get("h1_count", 0) > 1
+                               else "Keine H1-Überschrift gefunden")),
+            "quickwin": "Die H1-Überschrift ist die 'Hauptüberschrift' Ihrer Seite — KI-Systeme nutzen sie, um den Kerninhalt zu erkennen.",
+            "howto":    "Jede Seite braucht genau eine H1-Überschrift (die größte Überschrift). Sie sollte klar beschreiben, worum es auf der Seite geht. Beispiel für die Startseite: 'Willkommen im Hotel Alpenstern — Ihr 4-Sterne Wellnesshotel in Kitzbühel'. Bei WordPress: Die erste Überschrift im Editor als 'Überschrift 1' formatieren. Wichtig: Nur EINE H1 pro Seite, weitere Überschriften als H2 oder H3.",
+            "impact":   "Inhaltsstruktur & KI-Verständnis",
+            "category": "KI-Zitierbarkeit & Inhalte",
+        },
+        {
+            "name":     "Ausreichend Textinhalt (min. 300 Wörter)",
+            "ok":       facts.get("content_ok", False),
+            "detail":   f'{facts.get("word_count", 0)} Wörter gefunden' if facts.get("content_ok") else f'Nur {facts.get("word_count", 0)} Wörter — zu wenig für KI-Extraktion',
+            "quickwin": "Ihre Startseite hat zu wenig Text — KI-Systeme können Ihren Betrieb nicht ausreichend beschreiben.",
+            "howto":    "KI-Systeme wie ChatGPT brauchen genug Text, um Ihren Betrieb verstehen und empfehlen zu können. Ergänzen Sie auf der Startseite: (1) Eine kurze Betriebsbeschreibung (wer Sie sind, was Sie besonders macht). (2) Ihre wichtigsten Angebote (Zimmer, Wellness, Gastronomie). (3) Lage und Umgebung (was kann man bei Ihnen erleben?). (4) Warum Gäste Sie wählen sollten. Ziel: Mindestens 300 Wörter echten, informativen Text — keine Füllwörter, sondern Fakten und Beschreibungen.",
+            "impact":   "KI-Verständnis & Empfehlungsqualität",
+            "category": "KI-Zitierbarkeit & Inhalte",
+        },
+        # ── SECTION: Strukturierte Daten ──
+        {
+            "name":     "Schema.org Markup",
+            "ok":       facts.get("schema_org", False),
+            "detail":   "Gefunden" if facts.get("schema_org") else "Nicht gefunden",
+            "quickwin": "Schema.org Markup fehlt — das ist die 'Maschinensprache', mit der KI-Systeme Ihre Daten lesen.",
+            "howto":    "Strukturierte Daten sagen KI-Systemen exakt: 'Das ist ein Hotel, es liegt hier, hat diese Sterne, diese Preise.' Bei WordPress: Installieren Sie das Plugin 'Schema Pro' oder 'Rank Math' (hat Schema-Funktion integriert). Wählen Sie als Typ 'Hotel' oder 'LodgingBusiness' und füllen Sie Name, Adresse, Telefon, Sternekategorie und Preisspanne aus. Ohne WordPress: Ihr Webentwickler kann ein JSON-LD Script im HTML-Head einfügen — fragen Sie nach 'Hotel Schema Markup'.",
+            "impact":   "KI-Zitierbarkeit — höchste Priorität",
+            "category": "Strukturierte Daten",
+        },
+        {
+            "name":     "JSON-LD Structured Data",
+            "ok":       facts.get("jsonld_ok", False),
+            "detail":   jsonld_detail if facts.get("jsonld_ok") else "Kein JSON-LD gefunden",
+            "quickwin": "JSON-LD ist das bevorzugte Datenformat — Google, ChatGPT und Perplexity lesen es am zuverlässigsten.",
+            "howto":    "JSON-LD ist ein unsichtbarer Code-Block im HTML Ihrer Seite, der Ihre Betriebsdaten maschinenlesbar macht. Es ist das Format, das Google offiziell empfiehlt. Bei WordPress: Rank Math oder Schema Pro erzeugen automatisch JSON-LD. Manuell: Nutzen Sie den Google Structured Data Markup Helper (Google-Suche danach), um den Code zu erzeugen, und lassen Sie ihn von Ihrem Webentwickler im HTML-Head einfügen. Enthaltene Infos: Betriebsname, Adresse, Telefon, Öffnungszeiten, Bewertungen, Preise.",
+            "impact":   "KI-Datenextraktion — sehr hoch",
+            "category": "Strukturierte Daten",
+        },
+        # ── SECTION: Social & Sharing ──
+        {
+            "name":     "Open Graph Tags (og:title, og:description, og:image)",
+            "ok":       facts.get("og_ok", False),
+            "detail":   f'Gefunden: {", ".join(og_found)}' if og_found else "Keine OG-Tags gefunden",
+            "quickwin": "Open Graph Tags fehlen — diese steuern, wie Ihr Betrieb auf Social Media UND in KI-Systemen dargestellt wird.",
+            "howto":    "Open Graph Tags bestimmen Titel, Beschreibung und Vorschaubild, wenn jemand Ihre Website auf Facebook, WhatsApp oder LinkedIn teilt — und KI-Systeme nutzen sie ebenfalls. Bei WordPress: Yoast SEO → unter jeder Seite den Tab 'Social' öffnen und Titel, Beschreibung und Bild eintragen. Ohne WordPress: Ihr Webentwickler fügt im HTML-Head ein: og:title (Betriebsname), og:description (kurze Beschreibung), og:image (ein ansprechendes Foto, mind. 1200×630 Pixel).",
+            "impact":   "KI-Kontext & Social Sharing",
+            "category": "Social & Sharing",
+        },
+        # ── SECTION: Sprache & International ──
+        {
+            "name":     "Sprach-Attribut (lang=)",
+            "ok":       facts.get("lang_ok", False),
+            "detail":   f'lang="{facts["lang"]}"' if facts.get("lang_ok") else "Fehlt",
+            "quickwin": "Sprach-Attribut fehlt — KI-Systeme wissen nicht, in welcher Sprache Ihre Seite geschrieben ist.",
+            "howto":    "Das Sprach-Attribut ist eine kleine Ergänzung ganz am Anfang Ihres HTML-Codes. Ihr Webentwickler muss nur sicherstellen, dass der HTML-Tag so aussieht: <html lang=\"de\"> (für Deutsch) oder <html lang=\"de-AT\"> (für österreichisches Deutsch). Bei WordPress: Die meisten Themes setzen das automatisch — prüfen Sie unter Einstellungen → Allgemein, ob die richtige Sprache eingestellt ist.",
+            "impact":   "Sprachliche Einordnung",
+            "category": "Sprache & International",
+        },
+        {
+            "name":     "Hreflang-Tags (Mehrsprachigkeit)",
+            "ok":       facts.get("hreflang_ok", False),
+            "detail":   f'Sprachen: {", ".join(facts.get("hreflang_langs", []))}' if facts.get("hreflang_ok") else "Keine Hreflang-Tags — nur einsprachig",
+            "quickwin": "Hreflang-Tags fehlen — für internationale Gäste wissen KI-Systeme nicht, ob es Ihre Seite in anderen Sprachen gibt.",
+            "howto":    "Hreflang-Tags sind relevant, wenn Sie Ihre Website in mehreren Sprachen anbieten (z.B. Deutsch + Englisch). Sie signalisieren KI-Systemen: 'Diese Seite gibt es auch auf Englisch unter dieser URL.' Bei WordPress: Das Plugin 'WPML' oder 'Polylang' setzt Hreflang-Tags automatisch. Falls Ihre Website nur auf Deutsch existiert und Sie keine internationalen Gäste ansprechen, ist dieser Punkt weniger wichtig — aber für Tourismusbetriebe mit internationaler Kundschaft sehr empfohlen.",
+            "impact":   "Internationale KI-Sichtbarkeit",
+            "category": "Sprache & International",
+        },
+        # ── SECTION: Barrierefreiheit & Medien ──
+        {
+            "name":     "Bilder mit Alt-Texten (min. 80%)",
+            "ok":       facts.get("img_alt_ok", True),
+            "detail":   f'{img_alt} von {img_total} Bildern mit Alt-Text ({img_pct}%)' if img_total > 0 else "Keine Bilder gefunden",
+            "quickwin": f"Alt-Texte für Bilder ergänzen ({img_pct}% vorhanden) — KI-Systeme können Bilder ohne Beschreibung nicht 'sehen'.",
+            "howto":    "Alt-Texte sind kurze Beschreibungen, die jedem Bild zugeordnet werden. Beispiel: Statt leer → 'Panoramablick vom Balkon des Hotel Alpenstern auf die Kitzbüheler Alpen'. Bei WordPress: Klicken Sie auf ein Bild in der Mediathek und füllen Sie das Feld 'Alternativer Text' aus. Beschreiben Sie, was auf dem Bild zu sehen ist — kurz, sachlich, mit Ortsbezug. Das hilft nicht nur KI-Systemen, sondern auch sehbehinderten Gästen und verbessert Ihre Barrierefreiheit.",
+            "impact":   "KI-Bildverständnis & Barrierefreiheit",
+            "category": "Barrierefreiheit & Medien",
         },
     ]
 
 
+MAX_SCORE = 36  # 18 checks × 2 points
+
 def score_farbe(s: int) -> str:
-    if s >= 14: return "#27ae60"
-    if s >= 8:  return "#e67e22"
+    if s >= 28: return "#27ae60"
+    if s >= 18: return "#e67e22"
     return "#c0392b"
 
 def score_interpretation(s: int) -> str:
-    if s >= 16: return "🟢 Sehr gute technische GEO-Basis — Inhalte optimieren"
-    if s >= 12: return "🟡 Solide Basis — einige technische Lücken schließen"
-    if s >= 6:  return "🟠 Technische Schwächen — KI-Sichtbarkeit stark eingeschränkt"
+    if s >= 30: return "🟢 Sehr gute GEO- & KI-Basis — Inhalte weiter optimieren"
+    if s >= 22: return "🟡 Solide Basis — einige technische Lücken schließen"
+    if s >= 12: return "🟠 Technische Schwächen — KI-Sichtbarkeit stark eingeschränkt"
     return "🔴 Kritisch — grundlegende technische Voraussetzungen fehlen"
 
 
@@ -345,7 +540,7 @@ st.markdown("""
   <div class="brand-tag">TÜV-zertifizierter KI-Trainer · DACH Tourismus</div>
   <h1>🏔 GEO-Readiness <span>Checker</span></h1>
   <p>Wie sichtbar ist Ihr Betrieb in ChatGPT, Perplexity und Google AI?<br>
-  Kostenlose technische Analyse in 30 Sekunden — 10 verifizierte Checkpunkte.</p>
+  Kostenlose technische Analyse in 30 Sekunden — 18 verifizierte Checkpunkte.</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -432,21 +627,26 @@ if st.session_state["analyse_done"] and st.session_state["result"]:
     checks    = result["checks"]
 
     # Score-Karte
-    pct = round(score / 20 * 100)
+    pct = round(score / MAX_SCORE * 100)
     st.markdown(f"""
     <div class="score-card">
       <div class="score-number" style="color:{score_farbe(score)}">{score}</div>
-      <div class="score-label">von 20 Punkten · {pct}% erreicht</div>
+      <div class="score-label">von {MAX_SCORE} Punkten · {pct}% erreicht</div>
       <div class="score-interpretation">{score_interpretation(score)}</div>
     </div>
     """, unsafe_allow_html=True)
 
-    # Checkpunkte
-    st.subheader("🔬 10 Gemessene Checkpunkte")
+    # Checkpunkte — grouped by category
+    st.subheader("🔬 18 Gemessene GEO- & KI-Checkpunkte")
     passed = sum(1 for c in checks if c["ok"])
-    st.caption(f"{passed} von 10 Checkpunkten bestanden")
+    st.caption(f"{passed} von 18 Checkpunkten bestanden")
 
+    categories_seen = []
     for c in checks:
+        cat = c.get("category", "")
+        if cat and cat not in categories_seen:
+            categories_seen.append(cat)
+            st.markdown(f"**{cat}**")
         css  = "check-ok" if c["ok"] else "check-fail"
         icon = "✅" if c["ok"] else "❌"
         st.markdown(f"""
@@ -463,23 +663,68 @@ if st.session_state["analyse_done"] and st.session_state["result"]:
         for a in result.get("allowed_bots", []):
             st.markdown(f'<div class="robots-allowed">✅ <strong>{a["bot"]}</strong> ({a["label"]}) — darf crawlen</div>', unsafe_allow_html=True)
 
-    # Quick Wins — nur für fehlgeschlagene Checks
+    # ══════════════════════════════════════════════════════
+    # HANDLUNGSEMPFEHLUNGEN — actionable recommendations
+    # ══════════════════════════════════════════════════════
     failed = [c for c in checks if not c["ok"]]
+
     if failed:
-        st.subheader("⚡ Ihre Quick Wins")
-        prio_map = {0: ("Hoch", "qw-hoch"), 1: ("Hoch", "qw-hoch"),
-                    2: ("Mittel", "qw-mittel"), 3: ("Mittel", "qw-mittel")}
-        for i, c in enumerate(failed):
-            prio, css = prio_map.get(i, ("Niedrig", "qw-niedrig"))
+        st.subheader("📋 Handlungsempfehlungen für Ihren Betrieb")
+        st.markdown("Basierend auf der Analyse ergeben sich folgende **konkrete Maßnahmen**, "
+                    "priorisiert nach Wirkung auf Ihre KI-Sichtbarkeit:")
+
+        # Split failed checks into priority tiers
+        critical = [c for c in failed if c["impact"] and ("kritisch" in c["impact"].lower() or "höchste" in c["impact"].lower() or "sehr hoch" in c["impact"].lower())]
+        high     = [c for c in failed if c not in critical and failed.index(c) < 4]
+        medium   = [c for c in failed if c not in critical and c not in high]
+
+        def render_recommendation(c, css_class):
             st.markdown(f"""
-            <div class="quickwin-card {css}">
-              <div class="qw-titel">{prio}: {c['name']}</div>
+            <div class="quickwin-card {css_class}">
+              <div class="qw-titel">{c['name']}</div>
               <div class="qw-impact">💡 {c['quickwin']}</div>
               <div class="qw-impact" style="color:#999;margin-top:4px">Wirkung: {c['impact']}</div>
             </div>
             """, unsafe_allow_html=True)
+            if c.get("howto"):
+                with st.expander(f"📖 So setzen Sie es um: {c['name']}"):
+                    st.markdown(c["howto"])
+
+        if critical:
+            st.markdown("##### 🔴 Sofort umsetzen (kritische Wirkung)")
+            for c in critical:
+                render_recommendation(c, "qw-hoch")
+
+        if high:
+            st.markdown("##### 🟠 Kurzfristig umsetzen (hohe Wirkung)")
+            for c in high:
+                render_recommendation(c, "qw-mittel")
+
+        if medium:
+            st.markdown("##### 🟡 Mittelfristig umsetzen (Feinschliff)")
+            for c in medium:
+                render_recommendation(c, "qw-niedrig")
+
+        # Summary action plan
+        st.markdown("---")
+        st.markdown("##### 🎯 Zusammenfassung")
+        total_failed = len(failed)
+        if pct >= 70:
+            summary = (f"Ihr Betrieb hat bereits eine **gute Basis** für KI-Sichtbarkeit. "
+                       f"Mit {total_failed} gezielten Optimierungen können Sie Ihre "
+                       f"Auffindbarkeit in ChatGPT, Perplexity und Google AI weiter steigern.")
+        elif pct >= 40:
+            summary = (f"Ihr Betrieb hat **Nachholbedarf** bei {total_failed} Checkpunkten. "
+                       f"Die wichtigsten Maßnahmen betreffen {', '.join(set(c.get('category','') for c in failed[:3]))}. "
+                       f"Ohne diese Optimierungen bleibt Ihr Betrieb für KI-Systeme weitgehend unsichtbar.")
+        else:
+            summary = (f"Ihr Betrieb ist aktuell **kaum sichtbar** für KI-Systeme. "
+                       f"{total_failed} von 18 Checkpunkten müssen adressiert werden. "
+                       f"Wir empfehlen dringend, mit den kritischen Maßnahmen zu beginnen, "
+                       f"um die technische Grundlage für KI-Sichtbarkeit zu schaffen.")
+        st.info(summary)
     else:
-        st.success("🎉 Alle technischen Checkpunkte bestanden!")
+        st.success("🎉 Alle 18 technischen Checkpunkte bestanden! Ihr Betrieb ist hervorragend für KI-Sichtbarkeit aufgestellt.")
 
     # CTA
     st.markdown("""
@@ -530,7 +775,7 @@ with st.expander("🔒 Admin-Bereich"):
         if leads:
             st.write(f"**{len(leads)} Lead(s) in dieser Session:**")
             for i, l in enumerate(leads, 1):
-                st.write(f"{i}. **{l['betrieb']}** ({l['ort']}) — {l['score']}/20 Pkt — {l['email']} — {l.get('datum','')}")
+                st.write(f"{i}. **{l['betrieb']}** ({l['ort']}) — {l['score']}/{MAX_SCORE} Pkt — {l['email']} — {l.get('datum','')}")
             out = io.StringIO()
             w   = csv.DictWriter(out, fieldnames=["datum","betrieb","ort","email","website","typ","score"])
             w.writeheader()
