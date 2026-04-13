@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: geo-readiness-checker
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: bash start.sh
+    envVars:
+      - key: STREAMLIT_SERVER_PORT
+        value: 10000
+      - key: STREAMLIT_SERVER_ADDRESS
+        value: 0.0.0.0
+      - key: STREAMLIT_SERVER_HEADLESS
+        value: "true"
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: GCP_SERVICE_ACCOUNT_JSON
+        sync: false
