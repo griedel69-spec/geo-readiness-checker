@@ -637,32 +637,36 @@ if st.session_state["analyse_done"] and st.session_state["result"]:
     </div>
     """, unsafe_allow_html=True)
 
-    # Checkpunkte — grouped by category
+    # Checkpunkte — single HTML block to prevent React DOM conflicts
     st.subheader("🔬 18 Gemessene GEO- & KI-Checkpunkte")
     passed = sum(1 for c in checks if c["ok"])
     st.caption(f"{passed} von 18 Checkpunkten bestanden")
 
+    checks_html_parts = []
     categories_seen = []
     for c in checks:
         cat = c.get("category", "")
         if cat and cat not in categories_seen:
             categories_seen.append(cat)
-            st.markdown(f"**{cat}**")
+            checks_html_parts.append(f'<div class="category-header">{cat}</div>')
         css  = "check-ok" if c["ok"] else "check-fail"
         icon = "✅" if c["ok"] else "❌"
-        st.markdown(f"""
-        <div class="{css}">
-          <div class="check-name">{icon} {c['name']}</div>
-          <div class="check-detail">{c['detail']}</div>
-        </div>
-        """, unsafe_allow_html=True)
+        checks_html_parts.append(
+            f'<div class="{css}">'
+            f'<div class="check-name">{icon} {c["name"]}</div>'
+            f'<div class="check-detail">{c["detail"]}</div>'
+            f'</div>'
+        )
+    st.markdown("\n".join(checks_html_parts), unsafe_allow_html=True)
 
     # KI-Bot Detail
+    bots_html_parts = []
+    for b in result.get("blocked_bots", []):
+        bots_html_parts.append(f'<div class="robots-blocked">❌ <strong>{b["bot"]}</strong> ({b["label"]}) — blockiert in robots.txt</div>')
+    for a in result.get("allowed_bots", []):
+        bots_html_parts.append(f'<div class="robots-allowed">✅ <strong>{a["bot"]}</strong> ({a["label"]}) — darf crawlen</div>')
     with st.expander("🤖 KI-Bot Crawlability im Detail"):
-        for b in result.get("blocked_bots", []):
-            st.markdown(f'<div class="robots-blocked">❌ <strong>{b["bot"]}</strong> ({b["label"]}) — blockiert in robots.txt</div>', unsafe_allow_html=True)
-        for a in result.get("allowed_bots", []):
-            st.markdown(f'<div class="robots-allowed">✅ <strong>{a["bot"]}</strong> ({a["label"]}) — darf crawlen</div>', unsafe_allow_html=True)
+        st.markdown("\n".join(bots_html_parts), unsafe_allow_html=True)
 
     # ══════════════════════════════════════════════════════
     # HANDLUNGSEMPFEHLUNGEN — actionable recommendations
@@ -679,32 +683,47 @@ if st.session_state["analyse_done"] and st.session_state["result"]:
         high     = [c for c in failed if c not in critical and failed.index(c) < 4]
         medium   = [c for c in failed if c not in critical and c not in high]
 
-        def render_recommendation(c, css_class):
-            st.markdown(f"""
-            <div class="quickwin-card {css_class}">
-              <div class="qw-titel">{c['name']}</div>
-              <div class="qw-impact">💡 {c['quickwin']}</div>
-              <div class="qw-impact" style="color:#999;margin-top:4px">Wirkung: {c['impact']}</div>
-            </div>
-            """, unsafe_allow_html=True)
-            if c.get("howto"):
-                with st.expander(f"📖 So setzen Sie es um: {c['name']}"):
-                    st.markdown(c["howto"])
+        def build_recommendation_html(c, css_class):
+            return (
+                f'<div class="quickwin-card {css_class}">'
+                f'<div class="qw-titel">{c["name"]}</div>'
+                f'<div class="qw-impact">💡 {c["quickwin"]}</div>'
+                f'<div class="qw-impact" style="color:#999;margin-top:4px">Wirkung: {c["impact"]}</div>'
+                f'</div>'
+            )
+
+        # Build all recommendation HTML in one block per priority tier
+        reco_html = ""
+        reco_expanders = []
 
         if critical:
-            st.markdown("##### 🔴 Sofort umsetzen (kritische Wirkung)")
+            reco_html += '<h5>🔴 Sofort umsetzen (kritische Wirkung)</h5>'
             for c in critical:
-                render_recommendation(c, "qw-hoch")
+                reco_html += build_recommendation_html(c, "qw-hoch")
+                if c.get("howto"):
+                    reco_expanders.append(c)
 
         if high:
-            st.markdown("##### 🟠 Kurzfristig umsetzen (hohe Wirkung)")
+            reco_html += '<h5>🟠 Kurzfristig umsetzen (hohe Wirkung)</h5>'
             for c in high:
-                render_recommendation(c, "qw-mittel")
+                reco_html += build_recommendation_html(c, "qw-mittel")
+                if c.get("howto"):
+                    reco_expanders.append(c)
 
         if medium:
-            st.markdown("##### 🟡 Mittelfristig umsetzen (Feinschliff)")
+            reco_html += '<h5>🟡 Mittelfristig umsetzen (Feinschliff)</h5>'
             for c in medium:
-                render_recommendation(c, "qw-niedrig")
+                reco_html += build_recommendation_html(c, "qw-niedrig")
+                if c.get("howto"):
+                    reco_expanders.append(c)
+
+        # Render all HTML cards in one block
+        st.markdown(reco_html, unsafe_allow_html=True)
+
+        # Render expanders separately (native widgets, not mixed with HTML)
+        for c in reco_expanders:
+            with st.expander(f"📖 So setzen Sie es um: {c['name']}"):
+                st.markdown(c["howto"])
 
         # Summary action plan
         st.markdown("---")
