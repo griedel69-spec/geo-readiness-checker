@@ -585,35 +585,36 @@ if not st.session_state["analyse_done"]:
             if not website.startswith("http"):
                 website = "https://" + website
 
-            with st.spinner("🔍 Website wird analysiert… (ca. 15–30 Sekunden)"):
-                prog  = st.progress(0, text="Verbindung aufbauen…")
-                facts = check_website(website)
-                prog.progress(70, text="Ergebnisse auswerten…")
-                checks = build_checks(facts)
-                score  = sum(2 for c in checks if c["ok"])
-                prog.progress(90, text="Lead speichern…")
+            status = st.empty()
+            status.info("🔍 Website wird analysiert… (ca. 15–30 Sekunden)")
+            facts = check_website(website)
+            status.info("🔍 Ergebnisse auswerten…")
+            checks = build_checks(facts)
+            score  = sum(2 for c in checks if c["ok"])
+            status.info("🔍 Lead speichern…")
 
-                lead = {
-                    "betrieb": betrieb, "ort": ort, "email": email,
-                    "website": website, "typ": typ, "score": score,
-                }
-                write_lead_to_sheet(lead)
-                st.session_state["leads"].append({
-                    **lead,
-                    "datum": datetime.datetime.now().strftime("%d.%m.%Y %H:%M")
-                })
+            lead = {
+                "betrieb": betrieb, "ort": ort, "email": email,
+                "website": website, "typ": typ, "score": score,
+            }
+            write_lead_to_sheet(lead)
+            st.session_state["leads"].append({
+                **lead,
+                "datum": datetime.datetime.now().strftime("%d.%m.%Y %H:%M")
+            })
 
-                st.session_state["result"] = {
-                    "checks":       checks,
-                    "score":        score,
-                    "blocked_bots": facts.get("blocked_bots", []),
-                    "allowed_bots": facts.get("allowed_bots", []),
-                }
-                st.session_state["lead_data"]    = lead
-                st.session_state["analyse_done"] = True
-                prog.progress(100, text="Fertig!")
-                time.sleep(0.3)
-                st.rerun()
+            st.session_state["result"] = {
+                "checks":       checks,
+                "score":        score,
+                "blocked_bots": facts.get("blocked_bots", []),
+                "allowed_bots": facts.get("allowed_bots", []),
+            }
+            st.session_state["lead_data"]    = lead
+            st.session_state["analyse_done"] = True
+            status.success("✅ Analyse abgeschlossen!")
+            time.sleep(0.3)
+            status.empty()
+            st.rerun()
 
 
 # ══════════════════════════════════════════════════════
