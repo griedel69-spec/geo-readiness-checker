@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<!-- @template name="Angebot / Rechnung" description="Branded A4 Angebot or Rechnung with logo slot, Leistungstabelle, Kleinunternehmer tax note, bank details in footer" -->
+<helmet><script src="./ds-base.js"></script>
+<style>@media print{body{margin:0}}</style>
+</helmet>
+<div style="width:794px;min-height:1123px;background:#fff;padding:56px 60px;box-sizing:border-box;font-family:var(--font-body);color:var(--text-primary);font-size:12pt;line-height:1.5">
+<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:40px">
+<div style="font-size:10pt;color:var(--text-secondary);line-height:1.6">
+Gernot Riedel Tourism Consulting e.U.<br>Uferstrasse 4<br>A-5751 Maishofen
+</div>
+<img src="../../assets/logo/logo-hell-ohne-claim.png" alt="Gernot Riedel Tourism Consulting" style="width:110px;display:block">
+</div>
+<div style="margin-bottom:32px;font-size:10pt;color:var(--text-secondary);line-height:1.6">
+TVB Beispielregion<br>Frau/Herrn Empfänger<br>Musterstraße 1<br>A-0000 Musterort
+</div>
+<h1 style="font-family:var(--font-display);font-size:20pt;font-weight:800;color:var(--brand-primary);margin:0 0 4px">Angebot</h1>
+<div style="font-size:10pt;color:var(--text-secondary);margin-bottom:28px">AO-024 &nbsp;·&nbsp; Datum: 16.07.2026</div>
+<table style="width:100%;border-collapse:collapse;font-size:11pt;margin-bottom:20px">
+<thead><tr style="border-bottom:2px solid var(--brand-primary)">
+<th style="text-align:left;padding:8px 4px;font-weight:700">Leistung</th>
+<th style="text-align:right;padding:8px 4px;font-weight:700">Menge</th>
+<th style="text-align:right;padding:8px 4px;font-weight:700">Einzelpreis</th>
+<th style="text-align:right;padding:8px 4px;font-weight:700">Gesamt</th>
+</tr></thead>
+<tbody>
+<tr style="border-bottom:1px solid var(--border-default)"><td style="padding:8px 4px">ReviewRadar Bewertungsanalyse – Professional Report</td><td style="text-align:right;padding:8px 4px">1</td><td style="text-align:right;padding:8px 4px">1.200,00 €</td><td style="text-align:right;padding:8px 4px">1.200,00 €</td></tr>
+<tr style="border-bottom:1px solid var(--border-default)"><td style="padding:8px 4px">Vor-Ort-Workshop (halber Tag)</td><td style="text-align:right;padding:8px 4px">1</td><td style="text-align:right;padding:8px 4px">650,00 €</td><td style="text-align:right;padding:8px 4px">650,00 €</td></tr>
+<tr style="border-bottom:1px solid var(--border-default)"><td style="padding:8px 4px;color:var(--text-secondary)">Rabatt Bestandskunde (10%)</td><td style="text-align:right;padding:8px 4px"></td><td style="text-align:right;padding:8px 4px"></td><td style="text-align:right;padding:8px 4px;color:var(--text-secondary)">-185,00 €</td></tr>
+<tr style="border-bottom:1px solid var(--border-default)"><td style="padding:8px 4px;color:var(--text-secondary)">Fahrtkosten (amtliches Kilometergeld, 120 km)</td><td style="text-align:right;padding:8px 4px"></td><td style="text-align:right;padding:8px 4px"></td><td style="text-align:right;padding:8px 4px;color:var(--text-secondary)">50,40 €</td></tr>
+</tbody>
+</table>
+<div style="display:flex;justify-content:flex-end;margin-bottom:32px">
+<div style="width:240px;font-size:12pt;font-weight:700;display:flex;justify-content:space-between;border-top:2px solid var(--brand-primary);padding-top:8px"><span>Gesamtbetrag</span><span>1.715,40 €</span></div>
+</div>
+<div style="font-size:10pt;color:var(--text-secondary);margin-bottom:60px">Gemäß § 6 Abs. 1 Z 27 UStG 1994 wird keine Umsatzsteuer berechnet.</div>
+<div style="border-top:1px solid var(--border-default);padding-top:12px;font-size:9pt;color:var(--text-secondary);display:flex;justify-content:space-between">
+<span>Gernot Riedel Tourism Consulting e.U. · Uferstrasse 4, A-5751 Maishofen</span>
+<span>IBAN AT65 2040 4000 3814 7047 · BIC SBGSAT2SXXX</span>
+</div>
+</div>
+
+</x-dc>
+</body>
+</html>

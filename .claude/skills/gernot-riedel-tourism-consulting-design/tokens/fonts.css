@@ -1,0 +1,4 @@
+/* No brand webfont files were supplied. Substituted with the closest Google Fonts match:
+   Archivo (display/headings) + Open Sans (body — already the fixed brand font for Word docs).
+   Flagged in readme.md under "Typography" — replace with real font files if the brand later commissions/owns a custom typeface. */
+@import url('https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=Open+Sans:ital,wght@0,400;0,600;0,700;1,400&display=swap');
