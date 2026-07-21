@@ -1,6 +1,29 @@
 # Gesamtpaket: Gemeinsame Prüf-Logik + Ampel + PDF-Versand
 
-**Stand:** 21.07.2026 · Branch `claude/geo-checker-architecture-review-clxqy7` · **noch nicht auf `main` gemergt, nichts deployed.**
+**Stand: 21.07.2026 — LIVE auf Render.** Kompletter Testlauf bestanden
+(Analyse haus-steger.at, PDF an Betrieb, Benachrichtigung an Gernot).
+
+**Wichtige Betriebsfakten:**
+- **Mail-Versand läuft über die Brevo-Web-API** (`BREVO_API_KEY` + `MAIL_FROM`
+  in den Render-Umgebungsvariablen). Grund: Render blockt ausgehende
+  SMTP-Verbindungen (GMX/iCloud liefen in Timeouts). SMTP bleibt als
+  Fallback im Code. In Brevo muss „Authorised IPs" deaktiviert bleiben,
+  weil Render-Server wechselnde Adressen haben.
+- Diagnose + Test-Mail-Knopf: Admin-Bereich der App.
+- Alte Streamlit-Cloud-Instanz (`geo_checker_app.py`) wurde gelöscht;
+  der NAP-Checker läuft dort weiter.
+- Auto-Deploy auf Render: „On Commit" — Push auf `main` geht automatisch live.
+- Ergebnisseite gestrafft: Ampel vorn, die 14 Zusatz-Checkpunkte zugeklappt
+  unter „Technische Details für Ihren Webentwickler".
+
+**Noch offen (Kosmetik):**
+- WordPress-Seite `/geo-readiness-check-hotel/` textlich von 0–50-Score
+  auf Ampel-Sprache umstellen (iframe zeigt bereits die neue App).
+- Alter „ZAPIER SETUP"-Tab im Google Sheet kann gelöscht werden.
+
+---
+
+*Ursprüngliche Umsetzungs-Doku (Historie):*
 
 ## Was umgesetzt wurde
 
