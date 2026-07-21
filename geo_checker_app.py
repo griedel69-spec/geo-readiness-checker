@@ -7,8 +7,8 @@ import time
 import urllib.request
 from urllib.parse import urlparse
 
-import gspread
-from google.oauth2.service_account import Credentials
+# Google-Sheets-Lead-Register (eigenes Modul, testbar ohne Streamlit)
+from sheets import SHEET_ID, get_sheet, schreibe_lead
 
 # Gemeinsame Prüf-Logik (Signale 1-3, übernommen aus geo-radar — siehe signals/__init__.py)
 from signals import check_robots, check_schema, check_rendering
@@ -126,38 +126,10 @@ for key, default in [
 # GOOGLE SHEETS
 # ══════════════════════════════════════════════════════
 
-SHEET_ID  = "1bNBtr9w__zlPL_5XETHhewu3TZAc7qAR1wm8sRO5WVI"
-SHEET_TAB = "Leads"
-
-def get_sheet():
-    creds_dict = dict(st.secrets["gcp_service_account"])
-    scopes = [
-        "https://www.googleapis.com/auth/spreadsheets",
-        "https://www.googleapis.com/auth/drive",
-    ]
-    creds  = Credentials.from_service_account_info(creds_dict, scopes=scopes)
-    client = gspread.authorize(creds)
-    return client.open_by_key(SHEET_ID).worksheet(SHEET_TAB)
-
 def write_lead_to_sheet(data: dict) -> bool:
     try:
-        sheet = get_sheet()
-        if sheet.row_count < 1 or sheet.cell(1, 1).value != "Datum":
-            sheet.insert_row(
-                ["Datum", "Betrieb", "Ort", "E-Mail", "Website", "Typ", "Ampel", "Signale", "Versand"],
-                index=1
-            )
-        sheet.append_row([
-            datetime.datetime.now().strftime("%d.%m.%Y %H:%M"),
-            data.get("betrieb", ""),
-            data.get("ort", ""),
-            data.get("email", ""),
-            data.get("website", ""),
-            data.get("typ", ""),
-            data.get("ampel", ""),
-            data.get("signale", ""),
-            data.get("versand", ""),
-        ])
+        sheet = get_sheet(dict(st.secrets["gcp_service_account"]))
+        schreibe_lead(sheet, data)
         return True
     except Exception as e:
         st.warning(f"Google Sheets: {e}")

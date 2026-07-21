@@ -21,9 +21,12 @@
    VERKAUFSCHANCE markiert, PDF hängt mit an). Ohne SMTP-Konfiguration
    fällt die App sauber auf einen PDF-Download-Button zurück.
 5. **Google Sheet**: neue Zeilen schreiben jetzt
-   `Datum, Betrieb, Ort, E-Mail, Website, Typ, Ampel, Signale, Versand`.
-   Im bestehenden Sheet die Spaltenköpfe G/H/I einmalig von
-   „Score/Max/Score %" auf „Ampel/Signale/Versand" umbenennen.
+   `Datum, Betrieb, Ort, E-Mail, Website, Typ, Ampel, Signale, Versand`
+   — **bündig ab Spalte A** (`sheets.py`). Hintergrund: Im Alt-Sheet stand
+   ein manuell angelegter Kopf (Score-0-50-Layout), wodurch die bisherige App
+   ihre Zeilen versetzt ab Spalte G angehängt hat. Beim ersten Schreiben fügt
+   die neue Version automatisch die passende Kopfzeile oben ein; Alt-Daten
+   bleiben unverändert darunter. **Keine manuelle Sheet-Arbeit nötig.**
 6. **Tests**: `tests/` (17 Stück) — Ampel-Regeln, PDF-Erzeugung, Mail-Logik
    (ohne echten SMTP), und als Regressionstest der haus-steger-Befund:
    generische WordPress-Typen müssen ROT bleiben. `python -m pytest tests/`
@@ -44,14 +47,17 @@
       GMX: `mail.gmx.net` (Achtung: bei GMX „POP3/IMAP-Zugriff erlauben"
       aktivieren). Outlook/Microsoft 365: `smtp.office365.com`.
       Ohne diese Werte läuft die App, versendet aber nicht (nur Download).
-- [ ] **Achtung Variablen-Name:** `render.yaml` verlangt jetzt korrekt
-      `GCP_SERVICE_ACCOUNT_TOML` (vorher stand dort fälschlich `_JSON`).
-      Im Render-Dashboard prüfen, dass die Variable so heißt.
+- [x] ~~Variablen-Name `GCP_SERVICE_ACCOUNT_TOML` im Dashboard prüfen~~ —
+      per Beleg erledigt (21.07.2026): Die Live-App schreibt erfolgreich ins
+      Sheet, der Name im Dashboard stimmt also mit `start.sh` überein.
+- [x] ~~Sheet-Spaltenköpfe umbenennen~~ — entfällt, macht die App jetzt
+      automatisch (siehe Punkt 5).
 - [ ] Einmal mit echtem SMTP einen Testlauf machen (eigene E-Mail als
       „Betrieb" eintragen) und beide Mails prüfen.
-- [ ] Sheet-Spaltenköpfe umbenennen (siehe oben).
 - [ ] Merge auf `main` → Render deployed automatisch.
-- [ ] Alte Streamlit-Cloud-Instanz (falls noch aktiv) abschalten.
+- [ ] Alte Streamlit-Cloud-Instanz prüfen/abschalten:
+      https://geo-readiness-checker-mfk6vheyexwrqfkxmqvcav.streamlit.app
+      (aus der Cloud-Session nicht erreichbar — bitte kurz im Browser öffnen).
 
 ## Offen aus Phase 0.5
 
