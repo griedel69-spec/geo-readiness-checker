@@ -1,0 +1,151 @@
+{
+  "regex_checker": {
+    "score": 8,
+    "max": 36,
+    "checks": [
+      {
+        "name": "HTTPS-Verschlüsselung",
+        "ok": true,
+        "detail": "Aktiv",
+        "category": "Technische Basis"
+      },
+      {
+        "name": "Ladezeit unter 3 Sekunden",
+        "ok": false,
+        "detail": "Nicht messbar",
+        "category": "Technische Basis"
+      },
+      {
+        "name": "Mobile Viewport-Tag",
+        "ok": false,
+        "detail": "Fehlt",
+        "category": "Technische Basis"
+      },
+      {
+        "name": "Indexierbarkeit (Meta Robots)",
+        "ok": true,
+        "detail": "Indexierung erlaubt",
+        "category": "Technische Basis"
+      },
+      {
+        "name": "robots.txt — KI-Bots erlaubt",
+        "ok": true,
+        "detail": "Alle KI-Bots erlaubt",
+        "category": "Crawlbarkeit & Indexierung"
+      },
+      {
+        "name": "sitemap.xml vorhanden",
+        "ok": false,
+        "detail": "Nicht gefunden",
+        "category": "Crawlbarkeit & Indexierung"
+      },
+      {
+        "name": "Canonical Tag gesetzt",
+        "ok": false,
+        "detail": "Fehlt",
+        "category": "Crawlbarkeit & Indexierung"
+      },
+      {
+        "name": "Interne Verlinkung (min. 3 Links)",
+        "ok": false,
+        "detail": "Nur 0 interne Links",
+        "category": "Crawlbarkeit & Indexierung"
+      },
+      {
+        "name": "Meta-Description vorhanden",
+        "ok": false,
+        "detail": "Fehlt",
+        "category": "KI-Zitierbarkeit & Inhalte"
+      },
+      {
+        "name": "Page Title vorhanden",
+        "ok": false,
+        "detail": "Fehlt",
+        "category": "KI-Zitierbarkeit & Inhalte"
+      },
+      {
+        "name": "H1-Überschrift vorhanden",
+        "ok": false,
+        "detail": "Keine H1-Überschrift gefunden",
+        "category": "KI-Zitierbarkeit & Inhalte"
+      },
+      {
+        "name": "Ausreichend Textinhalt (min. 300 Wörter)",
+        "ok": false,
+        "detail": "Nur 0 Wörter — zu wenig für KI-Extraktion",
+        "category": "KI-Zitierbarkeit & Inhalte"
+      },
+      {
+        "name": "Schema.org Markup",
+        "ok": false,
+        "detail": "Nicht gefunden",
+        "category": "Strukturierte Daten"
+      },
+      {
+        "name": "JSON-LD Structured Data",
+        "ok": false,
+        "detail": "Kein JSON-LD gefunden",
+        "category": "Strukturierte Daten"
+      },
+      {
+        "name": "Open Graph Tags (og:title, og:description, og:image)",
+        "ok": false,
+        "detail": "Keine OG-Tags gefunden",
+        "category": "Social & Sharing"
+      },
+      {
+        "name": "Sprach-Attribut (lang=)",
+        "ok": false,
+        "detail": "Fehlt",
+        "category": "Sprache & International"
+      },
+      {
+        "name": "Hreflang-Tags (Mehrsprachigkeit)",
+        "ok": false,
+        "detail": "Keine Hreflang-Tags — nur einsprachig",
+        "category": "Sprache & International"
+      },
+      {
+        "name": "Bilder mit Alt-Texten (min. 80%)",
+        "ok": true,
+        "detail": "Keine Bilder gefunden",
+        "category": "Barrierefreiheit & Medien"
+      }
+    ],
+    "facts_auszug": {
+      "jsonld_types": [],
+      "blocked_bots": [],
+      "word_count": 0,
+      "load_time": null
+    }
+  },
+  "geo_radar": {
+    "signal1": {
+      "status": "UNBEKANNT",
+      "reason": "robots.txt konnte nicht geladen werden",
+      "global_block": false,
+      "bots": []
+    },
+    "signal2": {
+      "status": "UNBEKANNT",
+      "reason": "HTML konnte nicht geladen werden",
+      "n_blocks": 0,
+      "n_parsed": 0,
+      "n_invalid": 0,
+      "all_types": [],
+      "has_faqpage": false,
+      "lodging": null
+    },
+    "signal3": {
+      "status": "UNBEKANNT",
+      "reason": "HTML konnte nicht geladen werden",
+      "visible_text_length": 0,
+      "is_spa_suspect": false,
+      "spa_markers": [],
+      "has_address": false,
+      "address_evidence": "",
+      "has_phone": false,
+      "phone_evidence": ""
+    }
+  }
+}
