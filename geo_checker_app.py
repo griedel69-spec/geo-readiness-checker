@@ -598,10 +598,10 @@ if st.session_state["analyse_done"] and st.session_state["result"]:
         mime="application/pdf",
     )
 
-    # Ergänzende Checkpunkte — single HTML block to prevent React DOM conflicts
-    st.subheader(f"🔬 {ANZAHL_ZUSATZ_CHECKS} Ergänzende technische Checkpunkte")
+    # Die 14 ergänzenden Checkpunkte und das KI-Bot-Detail werden hier nur
+    # VORBEREITET — angezeigt werden sie gesammelt im zugeklappten Bereich
+    # "Technische Details" weiter unten, damit die Ampel-Botschaft dominiert.
     passed = sum(1 for c in checks if c["ok"])
-    st.caption(f"{passed} von {ANZAHL_ZUSATZ_CHECKS} Checkpunkten bestanden")
 
     checks_html_parts = []
     categories_seen = []
@@ -618,9 +618,7 @@ if st.session_state["analyse_done"] and st.session_state["result"]:
             f'<div class="check-detail">{c["detail"]}</div>'
             f'</div>'
         )
-    st.markdown("\n".join(checks_html_parts), unsafe_allow_html=True)
 
-    # KI-Bot Detail (aus Signal 1: 13 Bots in Klasse A/B, mit Beleg-Zeile)
     bots_html_parts = []
     for b in result.get("bots", []):
         klasse = "sichtbarkeitskritisch" if b["klasse"] == "A" else "Trainings-Bot"
@@ -628,9 +626,6 @@ if st.session_state["analyse_done"] and st.session_state["result"]:
             bots_html_parts.append(f'<div class="robots-allowed">✅ <strong>{b["name"]}</strong> ({klasse}) — darf lesen · {b["beleg"]}</div>')
         else:
             bots_html_parts.append(f'<div class="robots-blocked">❌ <strong>{b["name"]}</strong> ({klasse}) — blockiert · {b["beleg"]}</div>')
-    if bots_html_parts:
-        with st.expander("🤖 KI-Bot Crawlability im Detail"):
-            st.markdown("\n".join(bots_html_parts), unsafe_allow_html=True)
 
     # ══════════════════════════════════════════════════════
     # HANDLUNGSEMPFEHLUNGEN — actionable recommendations
@@ -653,53 +648,35 @@ if st.session_state["analyse_done"] and st.session_state["result"]:
         st.markdown(empf_html, unsafe_allow_html=True)
 
     if failed:
-
-        # Split failed checks into priority tiers
+        # Sichtbar bleiben nur die 3 wirkungsvollsten technischen Punkte —
+        # kritische Wirkung zuerst, der Rest steht in den technischen Details.
         critical = [c for c in failed if c["impact"] and ("kritisch" in c["impact"].lower() or "höchste" in c["impact"].lower() or "sehr hoch" in c["impact"].lower())]
-        high     = [c for c in failed if c not in critical and failed.index(c) < 4]
-        medium   = [c for c in failed if c not in critical and c not in high]
+        priorisiert = critical + [c for c in failed if c not in critical]
+        top_punkte = priorisiert[:3]
 
-        def build_recommendation_html(c, css_class):
-            return (
-                f'<div class="quickwin-card {css_class}">'
+        st.markdown("##### 🔧 Die wichtigsten technischen Punkte")
+        reco_html = ""
+        for c in top_punkte:
+            css = "qw-hoch" if c in critical else "qw-mittel"
+            reco_html += (
+                f'<div class="quickwin-card {css}">'
                 f'<div class="qw-titel">{c["name"]}</div>'
                 f'<div class="qw-impact">💡 {c["quickwin"]}</div>'
                 f'<div class="qw-impact" style="color:#999;margin-top:4px">Wirkung: {c["impact"]}</div>'
                 f'</div>'
             )
-
-        # Build all recommendation HTML in one block per priority tier
-        reco_html = ""
-        reco_expanders = []
-
-        if critical:
-            reco_html += '<h5>🔴 Sofort umsetzen (kritische Wirkung)</h5>'
-            for c in critical:
-                reco_html += build_recommendation_html(c, "qw-hoch")
-                if c.get("howto"):
-                    reco_expanders.append(c)
-
-        if high:
-            reco_html += '<h5>🟠 Kurzfristig umsetzen (hohe Wirkung)</h5>'
-            for c in high:
-                reco_html += build_recommendation_html(c, "qw-mittel")
-                if c.get("howto"):
-                    reco_expanders.append(c)
-
-        if medium:
-            reco_html += '<h5>🟡 Mittelfristig umsetzen (Feinschliff)</h5>'
-            for c in medium:
-                reco_html += build_recommendation_html(c, "qw-niedrig")
-                if c.get("howto"):
-                    reco_expanders.append(c)
-
-        # Render all HTML cards in one block
         st.markdown(reco_html, unsafe_allow_html=True)
 
-        # Render expanders separately (native widgets, not mixed with HTML)
-        for c in reco_expanders:
-            with st.expander(f"📖 So setzen Sie es um: {c['name']}"):
-                st.markdown(c["howto"])
+        # Umsetzungshilfen als eigene Aufklapper (nur für die Top-Punkte)
+        for c in top_punkte:
+            if c.get("howto"):
+                with st.expander(f"📖 So setzen Sie es um: {c['name']}"):
+                    st.markdown(c["howto"])
+
+        rest = len(failed) - len(top_punkte)
+        if rest > 0:
+            st.caption(f"➕ {rest} weitere Optimierungspunkt(e) finden Sie unten "
+                       f"unter „Technische Details für Ihren Webentwickler\".")
 
         # Summary action plan — richtet sich nach der Gesamt-Ampel
         st.markdown("---")
@@ -724,6 +701,25 @@ if st.session_state["analyse_done"] and st.session_state["result"]:
     elif not befund["empfehlungen"]:
         st.success(f"🎉 Ampel {befund['overall']} und alle {ANZAHL_ZUSATZ_CHECKS} ergänzenden "
                    "Checkpunkte bestanden! Ihr Betrieb ist hervorragend für KI-Sichtbarkeit aufgestellt.")
+
+    # Alle technischen Einzelheiten zugeklappt — die Ampel-Botschaft oben
+    # bleibt im Vordergrund, die Gründlichkeit bleibt trotzdem belegbar.
+    with st.expander(f"🔬 Technische Details für Ihren Webentwickler ({ANZAHL_ZUSATZ_CHECKS} weitere Checkpunkte)"):
+        st.caption(f"{passed} von {ANZAHL_ZUSATZ_CHECKS} Checkpunkten bestanden")
+        st.markdown("\n".join(checks_html_parts), unsafe_allow_html=True)
+
+        howto_offen = [c for c in failed if c.get("howto")]
+        if howto_offen:
+            st.markdown("---")
+            st.markdown("**📖 Umsetzungshilfen zu den nicht bestandenen Punkten**")
+            for c in howto_offen:
+                st.markdown(f"**{c['name']}**")
+                st.markdown(c["howto"])
+
+        if bots_html_parts:
+            st.markdown("---")
+            st.markdown("**🤖 KI-Bot Crawlability im Detail (aus Signal 1)**")
+            st.markdown("\n".join(bots_html_parts), unsafe_allow_html=True)
 
     # Verkaufs-Brücke: bei GELB/ROT konkretes Angebot, bei GRÜN weicher Hinweis
     if befund["verkaufsbruecke"]:
