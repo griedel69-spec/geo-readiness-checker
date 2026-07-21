@@ -22,12 +22,12 @@ LEAD = {"betrieb": "Hotel Teststern", "ort": "Kitzbühel",
 
 
 def test_ohne_konfiguration_kein_versand(monkeypatch):
-    for k in ("SMTP_HOST", "SMTP_USER", "SMTP_PASS"):
+    for k in ("SMTP_HOST", "SMTP_USER", "SMTP_PASS", "BREVO_API_KEY", "MAIL_FROM"):
         monkeypatch.delenv(k, raising=False)
-    assert mailer.smtp_konfiguriert(None) is False
+    assert mailer.transport(None) == ""
     ok, info = mailer.sende_kurzbefund(LEAD, _befund(), b"%PDF-fake", secrets=None)
     assert ok is False
-    assert "SMTP nicht konfiguriert" in info
+    assert "Versand nicht konfiguriert" in info
 
 
 def test_versand_beide_mails(monkeypatch):
@@ -76,11 +76,57 @@ def test_leerer_secrets_eintrag_faellt_auf_umgebung_zurueck(monkeypatch):
 
 
 def test_testmail_meldet_fehlende_schluessel(monkeypatch):
-    for k in ("SMTP_HOST", "SMTP_USER", "SMTP_PASS"):
+    for k in ("SMTP_HOST", "SMTP_USER", "SMTP_PASS", "BREVO_API_KEY", "MAIL_FROM"):
         monkeypatch.delenv(k, raising=False)
     ok, info = mailer.sende_testmail(None)
     assert ok is False
-    assert "fehlend" in info
+    assert "Versand nicht konfiguriert" in info
+
+
+def test_brevo_hat_vorrang_und_sendet_beide_mails(monkeypatch):
+    posts = []
+
+    class FakeResponse:
+        status_code = 201
+        text = "ok"
+
+    def fake_post(url, json=None, timeout=None, headers=None):
+        posts.append({"url": url, "json": json, "headers": headers})
+        return FakeResponse()
+
+    monkeypatch.setattr(mailer.requests, "post", fake_post)
+    monkeypatch.setenv("BREVO_API_KEY", "xkeysib-test")
+    monkeypatch.setenv("MAIL_FROM", "kontakt@gernot-riedel.com")
+    for k in ("SMTP_HOST", "SMTP_USER", "SMTP_PASS"):
+        monkeypatch.delenv(k, raising=False)
+
+    assert mailer.transport(None) == "brevo"
+    ok, info = mailer.sende_kurzbefund(LEAD, _befund(), b"%PDF-fake", secrets=None)
+    assert ok is True and info == ""
+    assert len(posts) == 2
+    an_betrieb, an_gernot = posts
+    assert an_betrieb["json"]["to"] == [{"email": "gast@example.com"}]
+    assert an_betrieb["json"]["sender"]["email"] == "kontakt@gernot-riedel.com"
+    assert an_betrieb["headers"]["api-key"] == "xkeysib-test"
+    # PDF haengt base64-kodiert an
+    import base64
+    assert base64.b64decode(an_betrieb["json"]["attachment"][0]["content"]) == b"%PDF-fake"
+    assert an_gernot["json"]["to"] == [{"email": mailer.DEFAULT_NOTIFY}]
+    assert "VERKAUFSCHANCE" in an_gernot["json"]["textContent"]
+
+
+def test_brevo_fehlerantwort_wird_gemeldet(monkeypatch):
+    class FakeResponse:
+        status_code = 401
+        text = "Key not found"
+
+    monkeypatch.setattr(mailer.requests, "post",
+                        lambda *a, **kw: FakeResponse())
+    monkeypatch.setenv("BREVO_API_KEY", "falsch")
+    monkeypatch.setenv("MAIL_FROM", "kontakt@gernot-riedel.com")
+    ok, info = mailer.sende_testmail(None)
+    assert ok is False
+    assert "401" in info
 
 
 def test_testmail_erfolgreich(monkeypatch):

@@ -23,12 +23,17 @@ Ist SMTP nicht konfiguriert, schlägt der Versand kontrolliert fehl
 """
 from __future__ import annotations
 
+import base64
 import os
 import smtplib
 import ssl
 from email.message import EmailMessage
 
+import requests
+
 DEFAULT_NOTIFY = "kontakt@gernot-riedel.com"
+BREVO_URL = "https://api.brevo.com/v3/smtp/email"
+ABSENDER_NAME = "Gernot Riedel Tourism Consulting"
 
 
 def _conf(secrets, key: str, default: str = "") -> str:
@@ -50,12 +55,35 @@ def smtp_konfiguriert(secrets=None) -> bool:
     return all(_conf(secrets, k) for k in ("SMTP_HOST", "SMTP_USER", "SMTP_PASS"))
 
 
+def _absender(secrets) -> str:
+    return _conf(secrets, "MAIL_FROM") or _conf(secrets, "SMTP_USER")
+
+
+def transport(secrets=None) -> str:
+    """
+    Welcher Versandweg ist aktiv?
+    'brevo' = Web-API (HTTPS) — funktioniert auch dort, wo die Cloud
+              direkte SMTP-Verbindungen blockt (z. B. Render).
+    'smtp'  = klassischer SMTP-Versand.
+    ''      = nichts konfiguriert.
+    """
+    if _conf(secrets, "BREVO_API_KEY") and _absender(secrets):
+        return "brevo"
+    if smtp_konfiguriert(secrets):
+        return "smtp"
+    return ""
+
+
 def smtp_status(secrets=None) -> dict:
     """
     Diagnose fuer den Admin-Bereich: welche Einstellungen sieht die App?
-    Gibt NIE Werte von Passwoertern zurueck — nur ob etwas gesetzt ist.
+    Gibt NIE Werte von Passwoertern/Schluesseln zurueck — nur ob etwas gesetzt ist.
     """
+    t = transport(secrets)
     return {
+        "Transport": {"brevo": "Brevo (Web-API)", "smtp": "SMTP"}.get(t, "❌ nicht konfiguriert"),
+        "BREVO_API_KEY_gesetzt": bool(_conf(secrets, "BREVO_API_KEY")),
+        "Absender": _absender(secrets),
         "SMTP_HOST": _conf(secrets, "SMTP_HOST"),          # Hostname ist unkritisch
         "SMTP_PORT": _conf(secrets, "SMTP_PORT", "587"),
         "SMTP_USER": _conf(secrets, "SMTP_USER"),          # Absender-Adresse
@@ -64,23 +92,59 @@ def smtp_status(secrets=None) -> dict:
     }
 
 
+def _sende_brevo(secrets, empfaenger: str, betreff: str, text: str,
+                 anhaenge: list | None = None) -> None:
+    """Versand ueber die Brevo-Web-API (HTTPS) — kein SMTP-Port noetig."""
+    payload = {
+        "sender": {"email": _absender(secrets), "name": ABSENDER_NAME},
+        "to": [{"email": empfaenger}],
+        "subject": betreff,
+        "textContent": text,
+    }
+    if anhaenge:
+        payload["attachment"] = [
+            {"name": name, "content": base64.b64encode(daten).decode("ascii")}
+            for name, daten in anhaenge
+        ]
+    r = requests.post(
+        BREVO_URL, json=payload, timeout=30,
+        headers={"api-key": _conf(secrets, "BREVO_API_KEY"),
+                 "accept": "application/json"},
+    )
+    if r.status_code not in (200, 201, 202):
+        raise RuntimeError(f"Brevo-Antwort {r.status_code}: {r.text[:300]}")
+
+
+def _versende(secrets, empfaenger: str, betreff: str, text: str,
+              anhaenge: list | None = None) -> None:
+    """Eine Mail über den aktiven Versandweg schicken (wirft bei Fehler)."""
+    if transport(secrets) == "brevo":
+        _sende_brevo(secrets, empfaenger, betreff, text, anhaenge)
+        return
+    msg = EmailMessage()
+    msg["From"] = _absender(secrets)
+    msg["To"] = empfaenger
+    msg["Subject"] = betreff
+    msg.set_content(text)
+    for name, daten in (anhaenge or []):
+        msg.add_attachment(daten, maintype="application", subtype="pdf", filename=name)
+    _sende(secrets, msg)
+
+
 def sende_testmail(secrets=None) -> tuple[bool, str]:
     """Schickt eine kurze Testmail an NOTIFY_EMAIL und meldet den exakten Fehler."""
-    if not smtp_konfiguriert(secrets):
-        fehlend = [k for k in ("SMTP_HOST", "SMTP_USER", "SMTP_PASS")
-                   if not _conf(secrets, k)]
-        return False, f"SMTP nicht konfiguriert — fehlend: {', '.join(fehlend)}"
-    absender = _conf(secrets, "MAIL_FROM") or _conf(secrets, "SMTP_USER")
+    t = transport(secrets)
+    if not t:
+        return False, ("Versand nicht konfiguriert — es fehlt entweder "
+                       "BREVO_API_KEY (+ MAIL_FROM) oder SMTP_HOST/SMTP_USER/SMTP_PASS")
     notify = _conf(secrets, "NOTIFY_EMAIL", DEFAULT_NOTIFY)
-    msg = EmailMessage()
-    msg["From"] = absender
-    msg["To"] = notify
-    msg["Subject"] = "✅ GEO-Checker Test-Mail — SMTP funktioniert"
-    msg.set_content("Diese Test-Mail wurde aus dem Admin-Bereich des "
-                    "GEO-Readiness-Checkers verschickt. Der Versand funktioniert.")
     try:
-        _sende(secrets, msg)
-        return True, f"Test-Mail an {notify} verschickt."
+        _versende(secrets, notify,
+                  "✅ GEO-Checker Test-Mail — Versand funktioniert",
+                  "Diese Test-Mail wurde aus dem Admin-Bereich des "
+                  "GEO-Readiness-Checkers verschickt. "
+                  f"Aktiver Versandweg: {t}.")
+        return True, f"Test-Mail an {notify} verschickt (Weg: {t})."
     except Exception as e:
         return False, f"Versand fehlgeschlagen: {type(e).__name__}: {e}"
 
@@ -112,21 +176,18 @@ def sende_kurzbefund(lead: dict, befund: dict, pdf_bytes: bytes,
     Rückgabe: (ok, fehlertext). ok ist nur True, wenn die Betriebs-Mail
     raus ist; scheitert nur die Benachrichtigung, wird das im Text vermerkt.
     """
-    if not smtp_konfiguriert(secrets):
-        return False, "SMTP nicht konfiguriert (SMTP_HOST/SMTP_USER/SMTP_PASS fehlen)"
+    if not transport(secrets):
+        return False, ("Versand nicht konfiguriert — es fehlt entweder "
+                       "BREVO_API_KEY (+ MAIL_FROM) oder SMTP_HOST/SMTP_USER/SMTP_PASS")
 
-    absender = _conf(secrets, "MAIL_FROM") or _conf(secrets, "SMTP_USER")
     notify = _conf(secrets, "NOTIFY_EMAIL", DEFAULT_NOTIFY)
     betrieb = lead.get("betrieb", "Ihr Betrieb")
     ampel = befund["overall"]
     dateiname = f"GEO-Kurz-Befund_{betrieb.replace(' ', '_')}.pdf"
+    anhaenge = [(dateiname, pdf_bytes)]
 
     # ── Mail 1: an den Betrieb ──
-    m1 = EmailMessage()
-    m1["From"] = absender
-    m1["To"] = lead.get("email", "")
-    m1["Subject"] = f"Ihr GEO-Kurz-Befund: Ampel {ampel} — {betrieb}"
-    m1.set_content(
+    text_betrieb = (
         f"Guten Tag,\n\n"
         f"vielen Dank für Ihre kostenlose GEO-Analyse von {lead.get('website', '')}.\n\n"
         f"Ihr Ergebnis: Gesamt-Ampel {ampel}.\n"
@@ -139,11 +200,10 @@ def sende_kurzbefund(lead: dict, befund: dict, pdf_bytes: bytes,
         f"Gernot Riedel Tourism Consulting · TÜV-zertifizierter KI-Trainer\n"
         f"kontakt@gernot-riedel.com · +43 676 7237811 · gernot-riedel.com\n"
     )
-    m1.add_attachment(pdf_bytes, maintype="application", subtype="pdf",
-                      filename=dateiname)
-
     try:
-        _sende(secrets, m1)
+        _versende(secrets, lead.get("email", ""),
+                  f"Ihr GEO-Kurz-Befund: Ampel {ampel} — {betrieb}",
+                  text_betrieb, anhaenge)
     except Exception as e:
         return False, f"Versand an Betrieb fehlgeschlagen: {e}"
 
@@ -153,11 +213,7 @@ def sende_kurzbefund(lead: dict, befund: dict, pdf_bytes: bytes,
     signale = "\n".join(
         f"  - {s['name']}: {s['status']} — {s['grund']}" for s in befund["signale"]
     )
-    m2 = EmailMessage()
-    m2["From"] = absender
-    m2["To"] = notify
-    m2["Subject"] = f"🔔 GEO-Checker Versand: {betrieb} — Ampel {ampel}"
-    m2.set_content(
+    text_gernot = (
         f"Der Kurz-Befund wurde soeben automatisch versendet.\n\n"
         f"Betrieb:  {betrieb}\n"
         f"Ort:      {lead.get('ort', '')}\n"
@@ -167,11 +223,10 @@ def sende_kurzbefund(lead: dict, befund: dict, pdf_bytes: bytes,
         f"Gesamt-Ampel: {ampel}\n{signale}\n\n"
         f"{chance}\n"
     )
-    m2.add_attachment(pdf_bytes, maintype="application", subtype="pdf",
-                      filename=dateiname)
-
     try:
-        _sende(secrets, m2)
+        _versende(secrets, notify,
+                  f"🔔 GEO-Checker Versand: {betrieb} — Ampel {ampel}",
+                  text_gernot, anhaenge)
     except Exception as e:
         return True, f"Befund versendet, aber Benachrichtigung an {notify} fehlgeschlagen: {e}"
 

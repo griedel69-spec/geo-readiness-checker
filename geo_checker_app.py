@@ -801,12 +801,14 @@ with st.expander("🔒 Admin-Bereich"):
             st.info("Noch keine Leads in dieser Session.")
 
         st.markdown("---")
-        st.markdown("**📧 E-Mail-Versand (SMTP) — Diagnose**")
+        st.markdown("**📧 E-Mail-Versand — Diagnose**")
         status = smtp_status(st.secrets)
-        st.write(f"SMTP_HOST: {'✅ ' + status['SMTP_HOST'] if status['SMTP_HOST'] else '❌ FEHLT'}")
-        st.write(f"SMTP_PORT: {status['SMTP_PORT']}")
-        st.write(f"SMTP_USER: {'✅ ' + status['SMTP_USER'] if status['SMTP_USER'] else '❌ FEHLT'}")
-        st.write(f"SMTP_PASS: {'✅ gesetzt' if status['SMTP_PASS_gesetzt'] else '❌ FEHLT'}")
+        st.write(f"Aktiver Versandweg: **{status['Transport']}**")
+        st.write(f"BREVO_API_KEY: {'✅ gesetzt' if status['BREVO_API_KEY_gesetzt'] else '❌ fehlt'}")
+        st.write(f"Absender (MAIL_FROM/SMTP_USER): {'✅ ' + status['Absender'] if status['Absender'] else '❌ FEHLT'}")
+        st.write(f"SMTP_HOST: {'✅ ' + status['SMTP_HOST'] if status['SMTP_HOST'] else '— nicht gesetzt'} · "
+                 f"Port {status['SMTP_PORT']} · "
+                 f"Passwort {'✅' if status['SMTP_PASS_gesetzt'] else '—'}")
         st.write(f"Benachrichtigung an: {status['NOTIFY_EMAIL']}")
         if st.button("📨 Test-Mail senden", key="smtp_test"):
             with st.spinner("Sende Test-Mail…"):

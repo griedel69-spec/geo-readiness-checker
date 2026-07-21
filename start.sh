@@ -5,7 +5,9 @@ cat > .streamlit/secrets.toml << SECRETS_EOF
 ADMIN_PASSWORD = "${ADMIN_PASSWORD}"
 
 # E-Mail-Versand (Kurz-Befund-PDF + Benachrichtigung an Gernot).
+# Bevorzugter Weg: Brevo-Web-API (Render blockt direkte SMTP-Verbindungen).
 # Ohne diese Werte laeuft die App trotzdem — dann nur PDF-Download statt Mail.
+BREVO_API_KEY = "${BREVO_API_KEY}"
 SMTP_HOST = "${SMTP_HOST}"
 SMTP_PORT = "${SMTP_PORT:-587}"
 SMTP_USER = "${SMTP_USER}"
