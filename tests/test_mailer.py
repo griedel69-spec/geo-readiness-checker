@@ -65,3 +65,30 @@ def test_benachrichtigung_fehlgeschlagen_ist_kein_gesamtfehler(monkeypatch):
     ok, info = mailer.sende_kurzbefund(LEAD, _befund(), b"%PDF-fake", secrets=None)
     assert ok is True
     assert "Benachrichtigung" in info
+
+
+def test_leerer_secrets_eintrag_faellt_auf_umgebung_zurueck(monkeypatch):
+    # start.sh schreibt SMTP-Schluessel auch leer in secrets.toml —
+    # ein leerer Eintrag darf den echten Wert aus os.environ nicht verdecken.
+    monkeypatch.setenv("SMTP_HOST", "smtp.example.com")
+    secrets = {"SMTP_HOST": ""}
+    assert mailer._conf(secrets, "SMTP_HOST") == "smtp.example.com"
+
+
+def test_testmail_meldet_fehlende_schluessel(monkeypatch):
+    for k in ("SMTP_HOST", "SMTP_USER", "SMTP_PASS"):
+        monkeypatch.delenv(k, raising=False)
+    ok, info = mailer.sende_testmail(None)
+    assert ok is False
+    assert "fehlend" in info
+
+
+def test_testmail_erfolgreich(monkeypatch):
+    gesendet = []
+    monkeypatch.setenv("SMTP_HOST", "smtp.example.com")
+    monkeypatch.setenv("SMTP_USER", "checker@example.com")
+    monkeypatch.setenv("SMTP_PASS", "geheim")
+    monkeypatch.setattr(mailer, "_sende", lambda secrets, msg: gesendet.append(msg))
+    ok, info = mailer.sende_testmail(None)
+    assert ok is True
+    assert gesendet[0]["To"] == mailer.DEFAULT_NOTIFY

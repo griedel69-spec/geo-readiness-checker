@@ -14,7 +14,7 @@ from sheets import SHEET_ID, get_sheet, schreibe_lead
 from signals import check_robots, check_schema, check_rendering
 from befund import baue_befund, signal_kurzzeile, AMPEL_FARBEN, AMPEL_SYMBOL
 from befund_pdf import erzeuge_kurzbefund_pdf
-from mailer import sende_kurzbefund
+from mailer import sende_kurzbefund, smtp_status, sende_testmail
 
 # ─── PAGE CONFIG ───
 st.set_page_config(
@@ -589,6 +589,8 @@ if st.session_state["analyse_done"] and st.session_state["result"]:
     else:
         st.info("📄 Der E-Mail-Versand ist derzeit nicht möglich — "
                 "laden Sie Ihren Kurz-Befund einfach hier herunter.")
+        if result.get("mail_info"):
+            st.caption(f"Technischer Grund: {result['mail_info']}")
     st.download_button(
         "📥 Kurz-Befund als PDF herunterladen",
         data=result["pdf_bytes"],
@@ -797,6 +799,22 @@ with st.expander("🔒 Admin-Bereich"):
                                mime="text/csv")
         else:
             st.info("Noch keine Leads in dieser Session.")
+
+        st.markdown("---")
+        st.markdown("**📧 E-Mail-Versand (SMTP) — Diagnose**")
+        status = smtp_status(st.secrets)
+        st.write(f"SMTP_HOST: {'✅ ' + status['SMTP_HOST'] if status['SMTP_HOST'] else '❌ FEHLT'}")
+        st.write(f"SMTP_PORT: {status['SMTP_PORT']}")
+        st.write(f"SMTP_USER: {'✅ ' + status['SMTP_USER'] if status['SMTP_USER'] else '❌ FEHLT'}")
+        st.write(f"SMTP_PASS: {'✅ gesetzt' if status['SMTP_PASS_gesetzt'] else '❌ FEHLT'}")
+        st.write(f"Benachrichtigung an: {status['NOTIFY_EMAIL']}")
+        if st.button("📨 Test-Mail senden", key="smtp_test"):
+            with st.spinner("Sende Test-Mail…"):
+                ok, info = sende_testmail(st.secrets)
+            if ok:
+                st.success(info)
+            else:
+                st.error(info)
 
         st.markdown("---")
         st.markdown(f"🔗 [Alle Leads im Google Sheet öffnen](https://docs.google.com/spreadsheets/d/{SHEET_ID}/edit)")

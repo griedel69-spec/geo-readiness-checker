@@ -32,17 +32,57 @@ DEFAULT_NOTIFY = "kontakt@gernot-riedel.com"
 
 
 def _conf(secrets, key: str, default: str = "") -> str:
-    """Liest erst Streamlit-Secrets, dann Umgebungsvariablen."""
+    """
+    Liest erst Streamlit-Secrets, dann Umgebungsvariablen.
+    Ein LEERER Secrets-Eintrag zaehlt als "nicht gesetzt" — start.sh schreibt
+    die Schluessel immer in secrets.toml, auch wenn die Render-Variable fehlt;
+    dann steht dort "" und der echte Wert kann noch in os.environ liegen.
+    """
     try:
-        if secrets is not None and key in secrets:
-            return str(secrets[key])
+        if secrets is not None and key in secrets and str(secrets[key]).strip():
+            return str(secrets[key]).strip()
     except Exception:
         pass
-    return os.environ.get(key, default)
+    return os.environ.get(key, "").strip() or default
 
 
 def smtp_konfiguriert(secrets=None) -> bool:
     return all(_conf(secrets, k) for k in ("SMTP_HOST", "SMTP_USER", "SMTP_PASS"))
+
+
+def smtp_status(secrets=None) -> dict:
+    """
+    Diagnose fuer den Admin-Bereich: welche Einstellungen sieht die App?
+    Gibt NIE Werte von Passwoertern zurueck — nur ob etwas gesetzt ist.
+    """
+    return {
+        "SMTP_HOST": _conf(secrets, "SMTP_HOST"),          # Hostname ist unkritisch
+        "SMTP_PORT": _conf(secrets, "SMTP_PORT", "587"),
+        "SMTP_USER": _conf(secrets, "SMTP_USER"),          # Absender-Adresse
+        "SMTP_PASS_gesetzt": bool(_conf(secrets, "SMTP_PASS")),
+        "NOTIFY_EMAIL": _conf(secrets, "NOTIFY_EMAIL", DEFAULT_NOTIFY),
+    }
+
+
+def sende_testmail(secrets=None) -> tuple[bool, str]:
+    """Schickt eine kurze Testmail an NOTIFY_EMAIL und meldet den exakten Fehler."""
+    if not smtp_konfiguriert(secrets):
+        fehlend = [k for k in ("SMTP_HOST", "SMTP_USER", "SMTP_PASS")
+                   if not _conf(secrets, k)]
+        return False, f"SMTP nicht konfiguriert — fehlend: {', '.join(fehlend)}"
+    absender = _conf(secrets, "MAIL_FROM") or _conf(secrets, "SMTP_USER")
+    notify = _conf(secrets, "NOTIFY_EMAIL", DEFAULT_NOTIFY)
+    msg = EmailMessage()
+    msg["From"] = absender
+    msg["To"] = notify
+    msg["Subject"] = "✅ GEO-Checker Test-Mail — SMTP funktioniert"
+    msg.set_content("Diese Test-Mail wurde aus dem Admin-Bereich des "
+                    "GEO-Readiness-Checkers verschickt. Der Versand funktioniert.")
+    try:
+        _sende(secrets, msg)
+        return True, f"Test-Mail an {notify} verschickt."
+    except Exception as e:
+        return False, f"Versand fehlgeschlagen: {type(e).__name__}: {e}"
 
 
 def _sende(secrets, msg: EmailMessage) -> None:
