@@ -10,6 +10,12 @@ from urllib.parse import urlparse
 import gspread
 from google.oauth2.service_account import Credentials
 
+# Gemeinsame Prüf-Logik (Signale 1-3, übernommen aus geo-radar — siehe signals/__init__.py)
+from signals import check_robots, check_schema, check_rendering
+from befund import baue_befund, signal_kurzzeile, AMPEL_FARBEN, AMPEL_SYMBOL
+from befund_pdf import erzeuge_kurzbefund_pdf
+from mailer import sende_kurzbefund
+
 # ─── PAGE CONFIG ───
 st.set_page_config(
     page_title="GEO-Readiness Checker | Gernot Riedel Tourism Consulting",
@@ -38,13 +44,23 @@ html, body, [class*="css"] { font-family: 'DM Sans', sans-serif; }
     font-weight:600; letter-spacing:2px; text-transform:uppercase; margin-bottom:16px;
 }
 
-.score-card {
-    background:linear-gradient(135deg,#0d6248 0%,#1a7a5a 100%);
+.ampel-card {
     border-radius:8px; padding:28px 32px; text-align:center; margin:20px 0; color:white;
 }
-.score-number { font-size:64px; font-weight:700; line-height:1; }
-.score-label { font-size:14px; opacity:0.8; margin-top:4px; letter-spacing:1px; text-transform:uppercase; }
-.score-interpretation { font-size:17px; font-weight:600; margin-top:12px; }
+.ampel-status { font-size:44px; font-weight:700; line-height:1.1; }
+.ampel-label { font-size:14px; opacity:0.85; margin-top:4px; letter-spacing:1px; text-transform:uppercase; }
+.ampel-klartext { font-size:16px; font-weight:500; margin-top:12px; }
+
+.signal-card {
+    background:white; border:1px solid #e8e4dc; border-radius:6px;
+    padding:14px 18px; margin:8px 0;
+}
+.signal-status {
+    display:inline-block; color:white; font-weight:700; font-size:12px;
+    padding:3px 10px; border-radius:3px; margin-right:8px;
+}
+.signal-name { font-weight:600; font-size:15px; color:#1a2332; }
+.signal-grund { color:#555; font-size:13px; margin-top:5px; }
 
 .check-ok {
     background:#f0fff4; border-left:4px solid #27ae60;
@@ -128,7 +144,7 @@ def write_lead_to_sheet(data: dict) -> bool:
         sheet = get_sheet()
         if sheet.row_count < 1 or sheet.cell(1, 1).value != "Datum":
             sheet.insert_row(
-                ["Datum", "Betrieb", "Ort", "E-Mail", "Website", "Typ", "Score", "Max", "Score %"],
+                ["Datum", "Betrieb", "Ort", "E-Mail", "Website", "Typ", "Ampel", "Signale", "Versand"],
                 index=1
             )
         sheet.append_row([
@@ -138,9 +154,9 @@ def write_lead_to_sheet(data: dict) -> bool:
             data.get("email", ""),
             data.get("website", ""),
             data.get("typ", ""),
-            data.get("score", 0),
-            MAX_SCORE,
-            f"{round(data.get('score', 0) / MAX_SCORE * 100)}%",
+            data.get("ampel", ""),
+            data.get("signale", ""),
+            data.get("versand", ""),
         ])
         return True
     except Exception as e:
@@ -153,51 +169,14 @@ def write_lead_to_sheet(data: dict) -> bool:
 # ══════════════════════════════════════════════════════
 
 def check_website(url: str) -> dict:
-    """Misst alle 18 technischen GEO- und KI-Readiness-Faktoren direkt und verifizierbar."""
+    """
+    Misst die ergänzenden technischen Faktoren direkt und verifizierbar.
+    robots.txt/KI-Bots, Schema.org/JSON-LD und Textsubstanz werden NICHT mehr
+    hier geprüft — das übernehmen die Signal-Module 1-3 (Ordner signals/).
+    """
     parsed = urlparse(url)
     base   = f"{parsed.scheme}://{parsed.netloc}"
     facts  = {"https": parsed.scheme == "https"}
-
-    # robots.txt
-    robots_text = ""
-    try:
-        req = urllib.request.Request(
-            f"{base}/robots.txt", headers={"User-Agent": "GEO-Checker/1.0"}
-        )
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            robots_text = resp.read().decode("utf-8", errors="ignore")
-        facts["robots_exists"] = True
-    except Exception:
-        facts["robots_exists"] = False
-
-    # KI-Bot Crawlability
-    AI_BOTS = {
-        "GPTBot":          "OpenAI / ChatGPT",
-        "ClaudeBot":       "Anthropic / Claude",
-        "PerplexityBot":   "Perplexity",
-        "Google-Extended": "Google AI (Gemini)",
-        "Bytespider":      "TikTok / ByteDance",
-    }
-    blocked_bots, allowed_bots = [], []
-    if robots_text:
-        lines, current_ua, disallows = robots_text.lower().split("\n"), None, {}
-        for line in lines:
-            line = line.strip()
-            if line.startswith("user-agent:"):
-                current_ua = line.replace("user-agent:", "").strip()
-                disallows.setdefault(current_ua, [])
-            elif line.startswith("disallow:") and current_ua:
-                disallows[current_ua].append(line.replace("disallow:", "").strip())
-        for bot, label in AI_BOTS.items():
-            bl = bot.lower()
-            blocked = (bl in disallows and ("/" in disallows[bl] or "" in disallows[bl])) or \
-                      ("*" in disallows and "/" in disallows["*"])
-            (blocked_bots if blocked else allowed_bots).append({"bot": bot, "label": label})
-    else:
-        allowed_bots = [{"bot": b, "label": l} for b, l in AI_BOTS.items()]
-
-    facts["blocked_bots"] = blocked_bots
-    facts["allowed_bots"] = allowed_bots
 
     # sitemap.xml
     try:
@@ -325,19 +304,17 @@ def check_website(url: str) -> dict:
 
 
 def build_checks(facts: dict) -> list:
-    """Erstellt die 18 Checkpunkte mit Ergebnis und Quick-Win-Hinweis."""
-    bots_ok = len(facts.get("blocked_bots", [])) == 0
+    """
+    Erstellt die 14 ergänzenden Checkpunkte mit Ergebnis und Quick-Win-Hinweis.
 
+    Die Kernprüfungen (robots.txt/KI-Bots, Schema.org/JSON-LD, Textsubstanz)
+    laufen NICHT mehr hier, sondern über die gemeinsamen Signal-Module 1-3
+    aus dem geo-radar (Ordner signals/) — mit Ampel-Logik statt Punkten.
+    """
     # Image alt text detail
     img_total = facts.get("img_total", 0)
     img_alt   = facts.get("img_with_alt", 0)
     img_pct   = facts.get("img_alt_pct", 100)
-
-    # JSON-LD detail
-    jsonld_types = facts.get("jsonld_types", [])
-    jsonld_detail = f'{facts.get("jsonld_count", 0)} Block(s)'
-    if jsonld_types:
-        jsonld_detail += f' — Typen: {", ".join(jsonld_types[:5])}'
 
     # OG tags detail
     og_found = facts.get("og_tags_found", [])
@@ -381,15 +358,7 @@ def build_checks(facts: dict) -> list:
             "category": "Technische Basis",
         },
         # ── SECTION: Crawlbarkeit & Indexierung ──
-        {
-            "name":     "robots.txt — KI-Bots erlaubt",
-            "ok":       bots_ok,
-            "detail":   "Alle KI-Bots erlaubt" if bots_ok else f"{len(facts.get('blocked_bots',[]))} Bot(s) blockiert",
-            "quickwin": "robots.txt anpassen — GPTBot, ClaudeBot, PerplexityBot und Google-Extended müssen crawlen dürfen.",
-            "howto":    "Die robots.txt ist eine einfache Textdatei im Hauptverzeichnis Ihrer Website. Bitten Sie Ihren Webentwickler, folgende Einträge NICHT zu blockieren: GPTBot, ClaudeBot, PerplexityBot, Google-Extended. Konkret bedeutet das: Es darf KEIN 'Disallow: /' für diese Bots stehen. Falls Sie unsicher sind, schicken Sie Ihrem Webentwickler einfach diesen Check-Bericht.",
-            "impact":   "KI-Sichtbarkeit direkt",
-            "category": "Crawlbarkeit & Indexierung",
-        },
+        # (robots.txt/KI-Bots wird jetzt von Signal 1 geprüft — siehe Ampel oben)
         {
             "name":     "sitemap.xml vorhanden",
             "ok":       facts.get("sitemap_exists", False),
@@ -447,34 +416,8 @@ def build_checks(facts: dict) -> list:
             "impact":   "Inhaltsstruktur & KI-Verständnis",
             "category": "KI-Zitierbarkeit & Inhalte",
         },
-        {
-            "name":     "Ausreichend Textinhalt (min. 300 Wörter)",
-            "ok":       facts.get("content_ok", False),
-            "detail":   f'{facts.get("word_count", 0)} Wörter gefunden' if facts.get("content_ok") else f'Nur {facts.get("word_count", 0)} Wörter — zu wenig für KI-Extraktion',
-            "quickwin": "Ihre Startseite hat zu wenig Text — KI-Systeme können Ihren Betrieb nicht ausreichend beschreiben.",
-            "howto":    "KI-Systeme wie ChatGPT brauchen genug Text, um Ihren Betrieb verstehen und empfehlen zu können. Ergänzen Sie auf der Startseite: (1) Eine kurze Betriebsbeschreibung (wer Sie sind, was Sie besonders macht). (2) Ihre wichtigsten Angebote (Zimmer, Wellness, Gastronomie). (3) Lage und Umgebung (was kann man bei Ihnen erleben?). (4) Warum Gäste Sie wählen sollten. Ziel: Mindestens 300 Wörter echten, informativen Text — keine Füllwörter, sondern Fakten und Beschreibungen.",
-            "impact":   "KI-Verständnis & Empfehlungsqualität",
-            "category": "KI-Zitierbarkeit & Inhalte",
-        },
-        # ── SECTION: Strukturierte Daten ──
-        {
-            "name":     "Schema.org Markup",
-            "ok":       facts.get("schema_org", False),
-            "detail":   "Gefunden" if facts.get("schema_org") else "Nicht gefunden",
-            "quickwin": "Schema.org Markup fehlt — das ist die 'Maschinensprache', mit der KI-Systeme Ihre Daten lesen.",
-            "howto":    "Strukturierte Daten sagen KI-Systemen exakt: 'Das ist ein Hotel, es liegt hier, hat diese Sterne, diese Preise.' Bei WordPress: Installieren Sie das Plugin 'Schema Pro' oder 'Rank Math' (hat Schema-Funktion integriert). Wählen Sie als Typ 'Hotel' oder 'LodgingBusiness' und füllen Sie Name, Adresse, Telefon, Sternekategorie und Preisspanne aus. Ohne WordPress: Ihr Webentwickler kann ein JSON-LD Script im HTML-Head einfügen — fragen Sie nach 'Hotel Schema Markup'.",
-            "impact":   "KI-Zitierbarkeit — höchste Priorität",
-            "category": "Strukturierte Daten",
-        },
-        {
-            "name":     "JSON-LD Structured Data",
-            "ok":       facts.get("jsonld_ok", False),
-            "detail":   jsonld_detail if facts.get("jsonld_ok") else "Kein JSON-LD gefunden",
-            "quickwin": "JSON-LD ist das bevorzugte Datenformat — Google, ChatGPT und Perplexity lesen es am zuverlässigsten.",
-            "howto":    "JSON-LD ist ein unsichtbarer Code-Block im HTML Ihrer Seite, der Ihre Betriebsdaten maschinenlesbar macht. Es ist das Format, das Google offiziell empfiehlt. Bei WordPress: Rank Math oder Schema Pro erzeugen automatisch JSON-LD. Manuell: Nutzen Sie den Google Structured Data Markup Helper (Google-Suche danach), um den Code zu erzeugen, und lassen Sie ihn von Ihrem Webentwickler im HTML-Head einfügen. Enthaltene Infos: Betriebsname, Adresse, Telefon, Öffnungszeiten, Bewertungen, Preise.",
-            "impact":   "KI-Datenextraktion — sehr hoch",
-            "category": "Strukturierte Daten",
-        },
+        # (Textsubstanz der Startseite wird jetzt von Signal 3 geprüft,
+        #  Schema.org/JSON-LD inkl. Lodging-Entität von Signal 2 — siehe Ampel oben)
         # ── SECTION: Social & Sharing ──
         {
             "name":     "Open Graph Tags (og:title, og:description, og:image)",
@@ -517,18 +460,9 @@ def build_checks(facts: dict) -> list:
     ]
 
 
-MAX_SCORE = 36  # 18 checks × 2 points
-
-def score_farbe(s: int) -> str:
-    if s >= 28: return "#27ae60"
-    if s >= 18: return "#e67e22"
-    return "#c0392b"
-
-def score_interpretation(s: int) -> str:
-    if s >= 30: return "🟢 Sehr gute GEO- & KI-Basis — Inhalte weiter optimieren"
-    if s >= 22: return "🟡 Solide Basis — einige technische Lücken schließen"
-    if s >= 12: return "🟠 Technische Schwächen — KI-Sichtbarkeit stark eingeschränkt"
-    return "🔴 Kritisch — grundlegende technische Voraussetzungen fehlen"
+# Bewertet wird mit der Ampel der Signal-Module (GRÜN/GELB/ROT/UNBEKANNT),
+# nicht mehr mit einem Punkte-Score. Logik: signals/__init__.py + befund.py.
+ANZAHL_ZUSATZ_CHECKS = 14
 
 
 # ══════════════════════════════════════════════════════
@@ -540,7 +474,7 @@ st.markdown("""
   <div class="brand-tag">TÜV-zertifizierter KI-Trainer · DACH Tourismus</div>
   <h1>🏔 GEO-Readiness <span>Checker</span></h1>
   <p>Wie sichtbar ist Ihr Betrieb in ChatGPT, Perplexity und Google AI?<br>
-  Kostenlose technische Analyse in 30 Sekunden — 18 verifizierte Checkpunkte.</p>
+  Kostenlose Analyse mit GEO-Ampel — Ihr Kurz-Befund kommt als PDF per E-Mail.</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -586,28 +520,53 @@ if not st.session_state["analyse_done"]:
                 website = "https://" + website
 
             status = st.empty()
-            status.info("🔍 Website wird analysiert… (ca. 15–30 Sekunden)")
-            facts = check_website(website)
-            status.info("🔍 Ergebnisse auswerten…")
-            checks = build_checks(facts)
-            score  = sum(2 for c in checks if c["ok"])
-            status.info("🔍 Lead speichern…")
+            domain = urlparse(website).netloc or website
 
+            status.info("🔍 Signal 1/3: KI-Zugang (robots.txt) wird geprüft…")
+            s1 = check_robots(domain)
+            status.info("🔍 Signal 2/3: Strukturierte Betriebsdaten (Schema.org)…")
+            s2 = check_schema(domain)
+            status.info("🔍 Signal 3/3: Maschinenlesbarkeit der Startseite…")
+            s3 = check_rendering(domain)
+            befund = baue_befund(s1, s2, s3)
+
+            status.info("🔍 Ergänzende technische Checkpunkte…")
+            facts  = check_website(website)
+            checks = build_checks(facts)
+
+            status.info("📄 Kurz-Befund-PDF wird erstellt…")
             lead = {
                 "betrieb": betrieb, "ort": ort, "email": email,
-                "website": website, "typ": typ, "score": score,
+                "website": website, "typ": typ,
             }
-            write_lead_to_sheet(lead)
-            st.session_state["leads"].append({
+            pdf_bytes = erzeuge_kurzbefund_pdf(lead, befund)
+
+            status.info("📧 Kurz-Befund wird per E-Mail versendet…")
+            mail_ok, mail_info = sende_kurzbefund(lead, befund, pdf_bytes,
+                                                  secrets=st.secrets)
+
+            status.info("🔍 Lead speichern…")
+            lead_sheet = {
                 **lead,
+                "ampel":   befund["overall"],
+                "signale": signal_kurzzeile(befund),
+                "versand": ("versendet" if mail_ok else f"NICHT versendet: {mail_info}"),
+            }
+            write_lead_to_sheet(lead_sheet)
+            st.session_state["leads"].append({
+                **lead_sheet,
                 "datum": datetime.datetime.now().strftime("%d.%m.%Y %H:%M")
             })
 
             st.session_state["result"] = {
-                "checks":       checks,
-                "score":        score,
-                "blocked_bots": facts.get("blocked_bots", []),
-                "allowed_bots": facts.get("allowed_bots", []),
+                "befund":    befund,
+                "checks":    checks,
+                "bots":      [{"name": b.name, "klasse": b.klasse,
+                               "allowed": b.allowed, "beleg": b.beleg}
+                              for b in s1.bots],
+                "pdf_bytes": pdf_bytes,
+                "mail_ok":   mail_ok,
+                "mail_info": mail_info,
             }
             st.session_state["lead_data"]    = lead
             st.session_state["analyse_done"] = True
@@ -624,23 +583,51 @@ if not st.session_state["analyse_done"]:
 if st.session_state["analyse_done"] and st.session_state["result"]:
     result    = st.session_state["result"]
     lead_data = st.session_state["lead_data"]
-    score     = result["score"]
+    befund    = result["befund"]
     checks    = result["checks"]
 
-    # Score-Karte
-    pct = round(score / MAX_SCORE * 100)
+    # Ampel-Karte (statt Punkte-Score)
     st.markdown(f"""
-    <div class="score-card">
-      <div class="score-number" style="color:{score_farbe(score)}">{score}</div>
-      <div class="score-label">von {MAX_SCORE} Punkten · {pct}% erreicht</div>
-      <div class="score-interpretation">{score_interpretation(score)}</div>
+    <div class="ampel-card" style="background:{befund['farbe']}">
+      <div class="ampel-status">{befund['symbol']} {befund['overall']}</div>
+      <div class="ampel-label">GEO-Ampel · KI-Sichtbarkeit Ihres Betriebs</div>
+      <div class="ampel-klartext">{befund['klartext']}</div>
     </div>
     """, unsafe_allow_html=True)
 
-    # Checkpunkte — single HTML block to prevent React DOM conflicts
-    st.subheader("🔬 18 Gemessene GEO- & KI-Checkpunkte")
+    # Die drei Signale im Detail
+    st.subheader("🚦 Die drei Prüfbereiche")
+    signal_html = []
+    for s in befund["signale"]:
+        farbe = AMPEL_FARBEN[s["status"]]
+        signal_html.append(
+            f'<div class="signal-card" style="border-left:4px solid {farbe}">'
+            f'<span class="signal-status" style="background:{farbe}">{s["status"]}</span>'
+            f'<span class="signal-name">{s["name"]}</span>'
+            f'<div class="signal-grund">{s["grund"]}</div>'
+            f'</div>'
+        )
+    st.markdown("\n".join(signal_html), unsafe_allow_html=True)
+
+    # PDF- und Versand-Status
+    if result.get("mail_ok"):
+        st.success(f"📧 Ihr Kurz-Befund wurde als PDF an **{lead_data['email']}** gesendet.")
+        if result.get("mail_info"):
+            st.caption(result["mail_info"])
+    else:
+        st.info("📄 Der E-Mail-Versand ist derzeit nicht möglich — "
+                "laden Sie Ihren Kurz-Befund einfach hier herunter.")
+    st.download_button(
+        "📥 Kurz-Befund als PDF herunterladen",
+        data=result["pdf_bytes"],
+        file_name=f"GEO-Kurz-Befund_{lead_data['betrieb'].replace(' ', '_')}.pdf",
+        mime="application/pdf",
+    )
+
+    # Ergänzende Checkpunkte — single HTML block to prevent React DOM conflicts
+    st.subheader(f"🔬 {ANZAHL_ZUSATZ_CHECKS} Ergänzende technische Checkpunkte")
     passed = sum(1 for c in checks if c["ok"])
-    st.caption(f"{passed} von 18 Checkpunkten bestanden")
+    st.caption(f"{passed} von {ANZAHL_ZUSATZ_CHECKS} Checkpunkten bestanden")
 
     checks_html_parts = []
     categories_seen = []
@@ -659,24 +646,39 @@ if st.session_state["analyse_done"] and st.session_state["result"]:
         )
     st.markdown("\n".join(checks_html_parts), unsafe_allow_html=True)
 
-    # KI-Bot Detail
+    # KI-Bot Detail (aus Signal 1: 13 Bots in Klasse A/B, mit Beleg-Zeile)
     bots_html_parts = []
-    for b in result.get("blocked_bots", []):
-        bots_html_parts.append(f'<div class="robots-blocked">❌ <strong>{b["bot"]}</strong> ({b["label"]}) — blockiert in robots.txt</div>')
-    for a in result.get("allowed_bots", []):
-        bots_html_parts.append(f'<div class="robots-allowed">✅ <strong>{a["bot"]}</strong> ({a["label"]}) — darf crawlen</div>')
-    with st.expander("🤖 KI-Bot Crawlability im Detail"):
-        st.markdown("\n".join(bots_html_parts), unsafe_allow_html=True)
+    for b in result.get("bots", []):
+        klasse = "sichtbarkeitskritisch" if b["klasse"] == "A" else "Trainings-Bot"
+        if b["allowed"]:
+            bots_html_parts.append(f'<div class="robots-allowed">✅ <strong>{b["name"]}</strong> ({klasse}) — darf lesen · {b["beleg"]}</div>')
+        else:
+            bots_html_parts.append(f'<div class="robots-blocked">❌ <strong>{b["name"]}</strong> ({klasse}) — blockiert · {b["beleg"]}</div>')
+    if bots_html_parts:
+        with st.expander("🤖 KI-Bot Crawlability im Detail"):
+            st.markdown("\n".join(bots_html_parts), unsafe_allow_html=True)
 
     # ══════════════════════════════════════════════════════
     # HANDLUNGSEMPFEHLUNGEN — actionable recommendations
     # ══════════════════════════════════════════════════════
     failed = [c for c in checks if not c["ok"]]
 
-    if failed:
+    if befund["empfehlungen"] or failed:
         st.subheader("📋 Handlungsempfehlungen für Ihren Betrieb")
         st.markdown("Basierend auf der Analyse ergeben sich folgende **konkrete Maßnahmen**, "
                     "priorisiert nach Wirkung auf Ihre KI-Sichtbarkeit:")
+
+    if befund["empfehlungen"]:
+        st.markdown("##### 🚦 Aus den drei Prüfbereichen (höchste Priorität)")
+        empf_html = "".join(
+            f'<div class="quickwin-card qw-hoch">'
+            f'<div class="qw-titel">{i}. {e}</div>'
+            f'</div>'
+            for i, e in enumerate(befund["empfehlungen"], 1)
+        )
+        st.markdown(empf_html, unsafe_allow_html=True)
+
+    if failed:
 
         # Split failed checks into priority tiers
         critical = [c for c in failed if c["impact"] and ("kritisch" in c["impact"].lower() or "höchste" in c["impact"].lower() or "sehr hoch" in c["impact"].lower())]
@@ -725,39 +727,56 @@ if st.session_state["analyse_done"] and st.session_state["result"]:
             with st.expander(f"📖 So setzen Sie es um: {c['name']}"):
                 st.markdown(c["howto"])
 
-        # Summary action plan
+        # Summary action plan — richtet sich nach der Gesamt-Ampel
         st.markdown("---")
         st.markdown("##### 🎯 Zusammenfassung")
         total_failed = len(failed)
-        if pct >= 70:
-            summary = (f"Ihr Betrieb hat bereits eine **gute Basis** für KI-Sichtbarkeit. "
-                       f"Mit {total_failed} gezielten Optimierungen können Sie Ihre "
-                       f"Auffindbarkeit in ChatGPT, Perplexity und Google AI weiter steigern.")
-        elif pct >= 40:
-            summary = (f"Ihr Betrieb hat **Nachholbedarf** bei {total_failed} Checkpunkten. "
-                       f"Die wichtigsten Maßnahmen betreffen {', '.join(set(c.get('category','') for c in failed[:3]))}. "
-                       f"Ohne diese Optimierungen bleibt Ihr Betrieb für KI-Systeme weitgehend unsichtbar.")
+        if befund["overall"] == "GRÜN":
+            summary = (f"Ihr Betrieb hat eine **gute technische Basis** für KI-Sichtbarkeit "
+                       f"(Ampel GRÜN). Mit {total_failed} gezielten Optimierungen aus den "
+                       f"ergänzenden Checkpunkten holen Sie den letzten Feinschliff heraus.")
+        elif befund["overall"] == "GELB":
+            summary = (f"Ihre GEO-Ampel steht auf **GELB**: {befund['klartext']} "
+                       f"Beginnen Sie mit den Maßnahmen aus den drei Prüfbereichen — "
+                       f"danach lohnen sich die {total_failed} ergänzenden Punkte.")
+        elif befund["overall"] == "ROT":
+            summary = (f"Ihre GEO-Ampel steht auf **ROT**: {befund['klartext']} "
+                       f"Die Maßnahmen aus den drei Prüfbereichen haben Vorrang — "
+                       f"ohne sie verpuffen alle weiteren Optimierungen.")
         else:
-            summary = (f"Ihr Betrieb ist aktuell **kaum sichtbar** für KI-Systeme. "
-                       f"{total_failed} von 18 Checkpunkten müssen adressiert werden. "
-                       f"Wir empfehlen dringend, mit den kritischen Maßnahmen zu beginnen, "
-                       f"um die technische Grundlage für KI-Sichtbarkeit zu schaffen.")
+            summary = (f"Die automatische Prüfung war **nicht vollständig möglich** "
+                       f"(Ampel UNBEKANNT). {befund['klartext']}")
         st.info(summary)
-    else:
-        st.success("🎉 Alle 18 technischen Checkpunkte bestanden! Ihr Betrieb ist hervorragend für KI-Sichtbarkeit aufgestellt.")
+    elif not befund["empfehlungen"]:
+        st.success(f"🎉 Ampel {befund['overall']} und alle {ANZAHL_ZUSATZ_CHECKS} ergänzenden "
+                   "Checkpunkte bestanden! Ihr Betrieb ist hervorragend für KI-Sichtbarkeit aufgestellt.")
 
-    # CTA
-    st.markdown("""
-    <div class="cta-box">
-      <h3>Möchten Sie mehr aus Ihrem Score herausholen?</h3>
-      <p>
-        Als TÜV-zertifizierter KI-Trainer mit 30+ Jahren Tourismus-Erfahrung im DACH-Raum
-        helfe ich Ihnen, Ihren Betrieb in ChatGPT, Perplexity und Google AI sichtbar zu machen —
-        mit fertigen Texten, konkreten Maßnahmen und ohne technisches Vorwissen.
-      </p>
-      <p style="font-size:13px;opacity:0.7;">GEO-Optimierungspaket · ReviewRadar · Workshops & Beratung</p>
-    </div>
-    """, unsafe_allow_html=True)
+    # Verkaufs-Brücke: bei GELB/ROT konkretes Angebot, bei GRÜN weicher Hinweis
+    if befund["verkaufsbruecke"]:
+        st.markdown(f"""
+        <div class="cta-box">
+          <h3>Ihre Ampel steht auf {befund['overall']} — wir bringen sie auf GRÜN.</h3>
+          <p>
+            Das <strong>GEO-Optimierungspaket Professional (€ 149)</strong> setzt die oben
+            genannten Maßnahmen in fertige, KI-lesbare Texte um: FAQ, Startseiten-Überschrift,
+            USP-Box, lokale Keywords, Google-Business-Text, Meta-Descriptions und ein neuer
+            „Über uns"-Text — geliefert innerhalb von 24 Stunden, ohne technisches Vorwissen.
+          </p>
+          <p style="font-size:13px;opacity:0.7;">Einmalig € 149 · kein Abo · Upgrade auf ReviewRadar möglich</p>
+        </div>
+        """, unsafe_allow_html=True)
+    else:
+        st.markdown("""
+        <div class="cta-box">
+          <h3>Ampel GRÜN — jetzt den Vorsprung ausbauen</h3>
+          <p>
+            Die Technik trägt. Der nächste Hebel sind Ihre Inhalte: Als TÜV-zertifizierter
+            KI-Trainer mit 30+ Jahren Tourismus-Erfahrung im DACH-Raum helfe ich Ihnen,
+            aus Sichtbarkeit auch Buchungen zu machen.
+          </p>
+          <p style="font-size:13px;opacity:0.7;">GEO-Optimierungspaket · ReviewRadar · Workshops & Beratung</p>
+        </div>
+        """, unsafe_allow_html=True)
 
     col1, col2 = st.columns(2)
     with col1:
@@ -795,9 +814,9 @@ with st.expander("🔒 Admin-Bereich"):
         if leads:
             st.write(f"**{len(leads)} Lead(s) in dieser Session:**")
             for i, l in enumerate(leads, 1):
-                st.write(f"{i}. **{l['betrieb']}** ({l['ort']}) — {l['score']}/{MAX_SCORE} Pkt — {l['email']} — {l.get('datum','')}")
+                st.write(f"{i}. **{l['betrieb']}** ({l['ort']}) — Ampel {l.get('ampel','?')} ({l.get('signale','')}) — {l['email']} — {l.get('versand','')} — {l.get('datum','')}")
             out = io.StringIO()
-            w   = csv.DictWriter(out, fieldnames=["datum","betrieb","ort","email","website","typ","score"])
+            w   = csv.DictWriter(out, fieldnames=["datum","betrieb","ort","email","website","typ","ampel","signale","versand"])
             w.writeheader()
             w.writerows(leads)
             st.download_button("📥 CSV exportieren",

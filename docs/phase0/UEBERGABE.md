@@ -1,5 +1,9 @@
 # Übergabe-Notiz — Stand 21.07.2026
 
+> **Update (gleicher Tag, Gesamtpaket umgesetzt):** Das Gesamtpaket ist auf
+> diesem Branch gebaut und getestet — Details in `../UMSETZUNG-GESAMTPAKET.md`.
+> Die Phase-0/0.5-Abschnitte unten bleiben als Historie stehen.
+
 Arbeitspaket: **GEO-Checker auf gemeinsame Prüf-Logik mit geo-radar heben.**
 Dieser Ordner (`docs/phase0/`) sichert den kompletten Zwischenstand, damit auf
 jedem Rechner nahtlos weitergearbeitet werden kann. Am App-Code wurde
