@@ -92,3 +92,38 @@ def test_testmail_erfolgreich(monkeypatch):
     ok, info = mailer.sende_testmail(None)
     assert ok is True
     assert gesendet[0]["To"] == mailer.DEFAULT_NOTIFY
+
+
+def test_port_465_nutzt_ssl_direkt(monkeypatch):
+    aufrufe = []
+
+    class FakeSMTP:
+        def __init__(self, host, port, timeout=None, context=None):
+            aufrufe.append((type(self).__name__, host, port))
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def starttls(self, context=None): aufrufe.append(("starttls",))
+        def login(self, u, p): pass
+        def send_message(self, m): pass
+
+    class FakeSMTPSSL(FakeSMTP):
+        pass
+
+    monkeypatch.setattr(mailer.smtplib, "SMTP", FakeSMTP)
+    monkeypatch.setattr(mailer.smtplib, "SMTP_SSL", FakeSMTPSSL)
+    monkeypatch.setenv("SMTP_HOST", "mail.gmx.net")
+    monkeypatch.setenv("SMTP_USER", "x@gmx.at")
+    monkeypatch.setenv("SMTP_PASS", "geheim")
+
+    monkeypatch.setenv("SMTP_PORT", "465")
+    ok, _ = mailer.sende_testmail(None)
+    assert ok is True
+    assert aufrufe[0][0] == "FakeSMTPSSL"
+    assert ("starttls",) not in aufrufe
+
+    aufrufe.clear()
+    monkeypatch.setenv("SMTP_PORT", "587")
+    ok, _ = mailer.sende_testmail(None)
+    assert ok is True
+    assert aufrufe[0][0] == "FakeSMTP"
+    assert ("starttls",) in aufrufe

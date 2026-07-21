@@ -91,10 +91,18 @@ def _sende(secrets, msg: EmailMessage) -> None:
     user = _conf(secrets, "SMTP_USER")
     pw = _conf(secrets, "SMTP_PASS")
     ctx = ssl.create_default_context()
-    with smtplib.SMTP(host, port, timeout=20) as s:
-        s.starttls(context=ctx)
-        s.login(user, pw)
-        s.send_message(msg)
+    # Port 465 = direkte SSL-Verbindung (SMTPS), alles andere = STARTTLS.
+    # Manche Anbieter (z. B. GMX) nehmen Verbindungen von Cloud-Servern
+    # auf 587 nicht an — dann in Render einfach SMTP_PORT=465 setzen.
+    if port == 465:
+        with smtplib.SMTP_SSL(host, port, timeout=20, context=ctx) as s:
+            s.login(user, pw)
+            s.send_message(msg)
+    else:
+        with smtplib.SMTP(host, port, timeout=20) as s:
+            s.starttls(context=ctx)
+            s.login(user, pw)
+            s.send_message(msg)
 
 
 def sende_kurzbefund(lead: dict, befund: dict, pdf_bytes: bytes,
