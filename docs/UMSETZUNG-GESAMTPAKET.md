@@ -15,11 +15,30 @@
 - Auto-Deploy auf Render: „On Commit" — Push auf `main` geht automatisch live.
 - Ergebnisseite gestrafft: Ampel vorn, die 14 Zusatz-Checkpunkte zugeklappt
   unter „Technische Details für Ihren Webentwickler".
+- **Render-Kaltstart abgedeckt via UptimeRobot.** Die Render-Free-Instanz
+  schläft nach ~15 Min ohne Zugriff ein (Kaltstart ~50 s). Ein UptimeRobot-
+  Monitor (HTTP, alle 5 Min auf `https://geo-readiness-checker.onrender.com/`,
+  Monitor-ID 802425159) hält sie warm → kein Kaltstart. Render-Upgrade auf den
+  bezahlten Tarif damit **optional** — erst nötig bei großem, parallelem
+  Ad-Traffic (Leistung/Parallelität), nicht mehr wegen des Kaltstarts.
+  Hinweis: Render-Free hat ein Monats-Stundenkontingent (~750 h) — 24/7 warm
+  ≈ 730 h; bei mehreren Free-Diensten ggf. Monitor auf Tagesfenster begrenzen.
 
-**Noch offen (Kosmetik):**
-- WordPress-Seite `/geo-readiness-check-hotel/` textlich von 0–50-Score
-  auf Ampel-Sprache umstellen (iframe zeigt bereits die neue App).
+**Ready-to-go-to-market (Stand 22.07.2026):** Soft Launch startklar
+(kostenlose Funnel-Front trägt real getestet; Kaltstart via UptimeRobot
+gelöst). Seiten-Funnel konsistent (GEO-Seite + ReviewRadar-Seite + Seminar
+abgeglichen). Offene Geschäftsentscheidung: Kaufweg bleibt vorerst
+„Reply-to-E-Mail" (kein Checkout) — für Soft Launch okay, Skalierung später.
+Auslieferung des € 149-Pakets: manueller CLI-Lauf via `geo-radar/production.py`
+(8 Bausteine inkl. Schema-Steckbrief) — funktioniert, Automatisierung = P2.
+
+**Noch offen (Kosmetik / Aufräumen):**
+- `nap_checker_app.py` liegt ungenutzt im Repo (alter Zapier/Claude-4-5-Stand)
+  → entfernen oder bewusst deployen.
+- Alte Streamlit-Cloud-NAP-Instanz prüfen/abschalten.
 - Alter „ZAPIER SETUP"-Tab im Google Sheet kann gelöscht werden.
+- Google-Kundenstimmen-Link in Schritt 3 der GEO-Seite von Gernot klick-testen
+  (aus der Cloud-Session nicht auflösbar — Proxy blockt Google).
 
 ---
 
