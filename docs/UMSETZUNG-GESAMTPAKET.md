@@ -32,11 +32,15 @@ abgeglichen). Offene Geschäftsentscheidung: Kaufweg bleibt vorerst
 Auslieferung des € 149-Pakets: manueller CLI-Lauf via `geo-radar/production.py`
 (8 Bausteine inkl. Schema-Steckbrief) — funktioniert, Automatisierung = P2.
 
+**Wichtig — NICHT löschen:** `nap_checker_app.py` ist die Quelldatei des
+**live laufenden NAP-Konsistenz-Checkers auf Streamlit Cloud** (App
+„geo-readiness-checker · main · nap_checker_app.py"). Die App zieht ihren Code
+aus diesem Repo/Branch `main` — die Datei zu entfernen würde den NAP-Checker
+sofort brechen. Bewusst behalten (Entscheidung Gernot, 22.07.2026).
+
 **Noch offen (Kosmetik / Aufräumen):**
-- `nap_checker_app.py` liegt ungenutzt im Repo (alter Zapier/Claude-4-5-Stand)
-  → entfernen oder bewusst deployen.
-- Alte Streamlit-Cloud-NAP-Instanz prüfen/abschalten.
-- Alter „ZAPIER SETUP"-Tab im Google Sheet kann gelöscht werden.
+- Alter „ZAPIER SETUP"-Tab/Block im Google Sheet kann gelöscht werden
+  (rein kosmetisch, kein funktionaler Einfluss; manueller Schritt).
 - Google-Kundenstimmen-Link in Schritt 3 der GEO-Seite von Gernot klick-testen
   (aus der Cloud-Session nicht auflösbar — Proxy blockt Google).
 
