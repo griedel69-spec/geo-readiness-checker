@@ -114,6 +114,10 @@ class SchemaResult:
     all_types: list[str] = field(default_factory=list)
     lodging: Optional[LodgingCheck] = None
     has_faqpage: bool = False
+    # Wo das FAQPage-Markup gefunden wurde, wenn NICHT auf der Startseite
+    # (z. B. "/zimmer-preise/wissenswertes-faq/"). None = Startseite oder
+    # gar nicht gefunden.
+    faqpage_quelle: Optional[str] = None
     overall_status: str = "UNBEKANNT"  # GRÜN | GELB | ROT | UNBEKANNT
     reason: str = ""
 
@@ -397,10 +401,17 @@ def evaluate_html(
     http_status: int = 200,
     domain: str = "",
     fetched_url: Optional[str] = None,
+    faqpage_extern: Optional[str] = None,
 ) -> SchemaResult:
     """
     Wertet HTML-Text aus. Wird sowohl von check_schema() nach dem Fetch als auch
     von Tests direkt aufgerufen.
+
+    faqpage_extern: Pfad einer FAQ-Unterseite, auf der bereits gültiges
+    FAQPage-Markup nachgewiesen wurde (Glocknerhof-Fix: FAQPage-Markup
+    gehört laut Google-Richtlinie auf die FAQ-Seite selbst, nicht auf die
+    Startseite — die frühere Nur-Startseiten-Prüfung hat korrekt
+    ausgezeichnete Websites fälschlich mit 'keine FAQPage' bemängelt).
     """
     result = SchemaResult(domain=domain, fetched_url=fetched_url, fetched_status=http_status)
 
@@ -449,6 +460,9 @@ def evaluate_html(
     # Lodging-Entität suchen
     lodging_entities = [e for e in parsed_entities if _is_lodging(e)]
     result.has_faqpage = any("FAQPage" in _type_of(e) for e in parsed_entities)
+    if not result.has_faqpage and faqpage_extern:
+        result.has_faqpage = True
+        result.faqpage_quelle = faqpage_extern
 
     if not lodging_entities:
         result.overall_status = "ROT"
@@ -482,11 +496,18 @@ def evaluate_html(
         sameAs_evidence=sa_evidence,
     )
 
+    # Beleg-Zusatz, wenn das FAQPage-Markup auf einer FAQ-Unterseite
+    # nachgewiesen wurde (Belege statt Urteile: Fundstelle nennen).
+    quelle_hinweis = (
+        f" (FAQPage auf {result.faqpage_quelle})" if result.faqpage_quelle else ""
+    )
+
     missing_core = [c.name for c in core_checks if not c.present]
     if not missing_core and result.has_faqpage and has_sa:
         result.overall_status = "GRÜN"
         result.reason = (
             f"vollständige Lodging-Entität ({lodging_type_name}) + FAQPage + sameAs"
+            + quelle_hinweis
         )
     else:
         gaps: list[str] = []
@@ -500,9 +521,130 @@ def evaluate_html(
         result.reason = (
             f"Lodging-Entität ({lodging_type_name}) vorhanden, aber unvollständig — "
             + "; ".join(gaps)
+            + quelle_hinweis
         )
 
     return result
+
+
+# -----------------------------------------------------------------------------
+# FAQ-Unterseiten-Prüfung (Glocknerhof-Fix)
+# -----------------------------------------------------------------------------
+# FAQPage-Markup gehört laut Google-Richtlinie auf die Seite, auf der die
+# FAQ sichtbar ist — typischerweise eine Unterseite, NICHT die Startseite.
+# Die frühere Nur-Startseiten-Prüfung hat deshalb korrekt ausgezeichnete
+# Websites (Beweisfall glocknerhof.at: gültiges FAQPage mit 16 Fragen auf
+# /zimmer-preise/wissenswertes-faq/) dauerhaft mit "keine FAQPage"
+# bemängelt — und die Produktion hat daraufhin unnötig einen FAQ-Baustein
+# erzeugt. Jetzt: findet die Startseite kein FAQPage, werden bis zu
+# _MAX_FAQ_UNTERSEITEN FAQ-Kandidaten der GLEICHEN Domain nachgeprüft.
+
+_FAQ_LINK_SCHLUESSEL = ("faq", "fragen", "wissenswert")
+_FAQ_STANDARD_PFADE = ("/faq", "/faqs", "/haeufige-fragen", "/fragen")
+_MAX_FAQ_UNTERSEITEN = 3
+
+
+def _gleiche_domain(netloc: str, dom: str) -> bool:
+    """Locker genug für www./Subdomain-Varianten, hart gegen Fremd-Domains
+    (gleiche Regel wie der Domain-Riegel des Produktions-Crawlers)."""
+    n = netloc.lower().split(":")[0]
+    d = dom.lower().split(":")[0]
+    for prefix in ("www.",):
+        if n.startswith(prefix):
+            n = n[len(prefix):]
+        if d.startswith(prefix):
+            d = d[len(prefix):]
+    return n == d or n.endswith("." + d)
+
+
+def finde_faq_kandidaten(html: str, basis_url: str, dom: str) -> list[str]:
+    """
+    Sammelt FAQ-Kandidaten-URLs aus dem Startseiten-HTML: Links, deren
+    href ODER Ankertext ein FAQ-Schlüsselwort enthält, plus die
+    Standard-Pfade. Nur gleiche Domain, dedupliziert, Reihenfolge:
+    echte Links zuerst (die treffen fast immer), Standard-Pfade danach.
+    """
+    from urllib.parse import urljoin, urlparse
+
+    kandidaten: list[str] = []
+    gesehen: set[str] = set()
+
+    def _nimm(url: str) -> None:
+        p = urlparse(url)
+        if p.scheme not in ("http", "https"):
+            return
+        if not _gleiche_domain(p.netloc, dom):
+            return
+        schluessel = url.rstrip("/")
+        if schluessel not in gesehen:
+            gesehen.add(schluessel)
+            kandidaten.append(url)
+
+    try:
+        soup = BeautifulSoup(html, "lxml")
+        for a in soup.find_all("a", href=True):
+            href = a["href"]
+            text = a.get_text(" ", strip=True)
+            blob = (href + " " + text).lower()
+            if any(k in blob for k in _FAQ_LINK_SCHLUESSEL):
+                _nimm(urljoin(basis_url, href))
+    except Exception:
+        pass  # kaputtes HTML: dann eben nur die Standard-Pfade
+
+    for pfad in _FAQ_STANDARD_PFADE:
+        _nimm(urljoin(basis_url, pfad))
+
+    return kandidaten[:_MAX_FAQ_UNTERSEITEN]
+
+
+def hat_faqpage_markup(html: str) -> bool:
+    """Prüft ein HTML NUR auf gültiges FAQPage-JSON-LD (deterministisch)."""
+    try:
+        soup = BeautifulSoup(html, "lxml")
+    except Exception:
+        return False
+    for data, err in _extract_ld_blocks(soup):
+        if err is not None:
+            continue
+        if any("FAQPage" in _type_of(e) for e in _flatten_entities(data)):
+            return True
+    return False
+
+
+def _pruefe_faq_unterseiten(
+    kandidaten: list[str], dom: str,
+    user_agent: str, timeout: int,
+) -> tuple[Optional[str], int]:
+    """
+    Ruft die Kandidaten-URLs ab und sucht FAQPage-Markup. Rückgabe:
+    (Pfad_der_Fundstelle_oder_None, Anzahl_geprüfter_Seiten).
+    Weiterleitungen auf fremde Domains werden verworfen (Domain-Riegel).
+    """
+    from urllib.parse import urlparse
+    import time as _time
+
+    headers = {
+        "User-Agent": user_agent,
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "de-AT,de;q=0.9,en;q=0.7",
+    }
+    geprueft = 0
+    for i, url in enumerate(kandidaten):
+        if i > 0:
+            _time.sleep(0.3)  # höflich zwischen Requests
+        try:
+            r = requests.get(url, headers=headers, timeout=timeout,
+                             allow_redirects=True)
+        except requests.RequestException:
+            continue
+        if not (200 <= r.status_code < 300):
+            continue
+        if not _gleiche_domain(urlparse(r.url).netloc, dom):
+            continue
+        geprueft += 1
+        if hat_faqpage_markup(r.text):
+            return urlparse(r.url).path or "/", geprueft
+    return None, geprueft
 
 
 # -----------------------------------------------------------------------------
@@ -535,7 +677,32 @@ def check_schema(
         result.reason = "HTML konnte nicht geladen werden"
         return result
 
-    return evaluate_html(html or "", status or 200, dom, final_url)
+    result = evaluate_html(html or "", status or 200, dom, final_url)
+
+    # Glocknerhof-Fix: Startseite ohne FAQPage heißt noch nicht "keine
+    # FAQPage" — das Markup gehört auf die FAQ-Unterseite. Nachprüfen,
+    # bevor der Mangel behauptet wird (nur wenn eine Lodging-Entität da
+    # ist; ohne die entscheidet die FAQPage ohnehin nichts).
+    if result.overall_status == "GELB" and not result.has_faqpage:
+        kandidaten = finde_faq_kandidaten(html or "", final_url, dom)
+        if kandidaten:
+            quelle, geprueft = _pruefe_faq_unterseiten(
+                kandidaten, dom, user_agent, timeout)
+            if quelle:
+                result = evaluate_html(html or "", status or 200, dom,
+                                       final_url, faqpage_extern=quelle)
+            elif geprueft:
+                # Ehrlich präzisieren: nicht nur die Startseite wurde
+                # geprüft. Der Wortlaut "keine FAQPage" bleibt erhalten —
+                # die Produktions-Weiche (bausteine_aus_befund) hängt an
+                # genau dieser Phrase.
+                result.reason = result.reason.replace(
+                    "keine FAQPage",
+                    f"keine FAQPage (Startseite + {geprueft} "
+                    f"FAQ-Unterseite(n) geprüft)",
+                )
+
+    return result
 
 
 # -----------------------------------------------------------------------------
@@ -584,8 +751,12 @@ def format_report(res: SchemaResult) -> str:
         lines.append("Lodging-Entität: KEINE gefunden")
 
     fp_mark = "OK   " if res.has_faqpage else "FEHLT"
+    if res.faqpage_quelle:
+        fp_text = f"vorhanden (auf {res.faqpage_quelle})"
+    else:
+        fp_text = "vorhanden" if res.has_faqpage else "nicht vorhanden"
     lines.append("")
-    lines.append(f"[{fp_mark}] FAQPage: " + ("vorhanden" if res.has_faqpage else "nicht vorhanden"))
+    lines.append(f"[{fp_mark}] FAQPage: {fp_text}")
 
     return "\n".join(lines)
 
