@@ -147,7 +147,11 @@ def _pakete_bausteine(signale) -> list:
     bausteine = list(_IMMER_ENTHALTEN)
     if s2["status"] != "GRÜN":
         bausteine.insert(0, "Strukturierter Datensatz (digitaler Steckbrief)")
-        if "faqpage" in s2["grund"].lower():
+        # "keine FAQPage" heißt fehlend -> FAQ-Baustein noetig. Vorsicht:
+        # ein Treffer nur auf "faqpage" reicht NICHT - der Beleg kann auch
+        # "kein sameAs (FAQPage auf /pfad/)" lauten (Glocknerhof-Fix: FAQ
+        # existiert bereits auf einer Unterseite), das ist das Gegenteil.
+        if "keine faqpage" in s2["grund"].lower():
             bausteine.insert(0, "FAQ mit 10 Fragen")
     return bausteine
 

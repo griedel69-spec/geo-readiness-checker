@@ -117,6 +117,22 @@ def test_paket_umfang_fast_gruen_ist_reduziert_mit_einem_offenen_baustein():
     assert "FAQ mit 10 Fragen" not in b["paket_bausteine"]
 
 
+def test_paket_bausteine_faq_nicht_faelschlich_bei_vorhandener_faqpage_auf_unterseite():
+    """Regressionsschutz (realer Fund am Glocknerhof-Fall): der Beleg kann
+    'kein sameAs (FAQPage auf /pfad/)' lauten - die FAQ existiert bereits auf
+    einer Unterseite (Glocknerhof-Fix), das ist NICHT 'keine FAQPage'. Ein
+    reiner Teilstring-Treffer auf 'faqpage' wuerde hier faelschlich den
+    FAQ-Baustein hinzufuegen, obwohl schon eine FAQ existiert."""
+    b = baue_befund(
+        _res("GRÜN"),
+        _res("GELB", "Lodging-Entität (Hotel) vorhanden, aber unvollständig — "
+                     "kein sameAs (FAQPage auf /zimmer-preise/wissenswertes-faq/)"),
+        _res("GRÜN"),
+    )
+    assert "FAQ mit 10 Fragen" not in b["paket_bausteine"]
+    assert "Strukturierter Datensatz (digitaler Steckbrief)" in b["paket_bausteine"]
+
+
 def test_paket_umfang_gelb_mit_zwei_offenen_signalen_ist_voll():
     b = baue_befund(_res("GRÜN"), _res("GELB", "keine FAQPage"), _res("GELB", "Adresse fehlt"))
     assert b["overall"] == "GELB"
