@@ -1,0 +1,311 @@
+{
+  "cover": {
+    "title": "GEO-OPTIMIERUNGSPAKET",
+    "subtitle": "Hotel Glocknerhof — Berg im Drautal, Kärnten"
+  },
+  "infoTable": [
+    [
+      "GESAMT-AMPEL",
+      "GELB — reduzierter Umfang, gleicher Preis"
+    ],
+    [
+      "Website",
+      "https://glocknerhof.at"
+    ],
+    [
+      "Geprüft am",
+      "27.07.2026"
+    ],
+    [
+      "Leistung",
+      "GEO-Optimierungspaket — € 149 einmalig, reduzierter Umfang (7 von 8 Bausteinen)"
+    ]
+  ],
+  "blocks": [
+    {
+      "type": "h1",
+      "text": "Ihr Befund — kurz zusammengefasst"
+    },
+    {
+      "type": "ampel",
+      "num": "1",
+      "name": "KI-Crawler-Zugang",
+      "status": "GRÜN",
+      "text": "alle relevanten Bots erlaubt."
+    },
+    {
+      "type": "ampel",
+      "num": "2",
+      "name": "Strukturierte Daten",
+      "status": "GELB",
+      "text": "Ihre Hotel-Entität ist vollständig (Name, Adresse, Telefon, Bild, Koordinaten) und die FAQ-Unterseite ist korrekt ausgezeichnet. Es fehlt nur ein Punkt: die Verlinkung Ihrer Social-Media-Profile (sameAs) im digitalen Steckbrief."
+    },
+    {
+      "type": "ampel",
+      "num": "3",
+      "name": "Maschinenlesbarkeit",
+      "status": "GRÜN",
+      "text": "8.174 sichtbare Zeichen im Body, Adresse und Telefon stehen direkt im rohen HTML."
+    },
+    {
+      "type": "highlight",
+      "text": "Gesamt-Ampel: GELB. Da nur ein einziger Punkt offen ist, läuft Ihr Paket im reduzierten Umfang (7 statt 8 Bausteine) — zum selben Preis von € 149. Der FAQ-Baustein entfällt, weil auf Ihrer Website unter /zimmer-preise/wissenswertes-faq/ bereits eine gültige, korrekt ausgezeichnete FAQ-Seite existiert."
+    },
+    {
+      "type": "p",
+      "text": "Zur Rollenteilung: Wir liefern die Analyse und die fertig formulierten Bausteine unten. Die technische Einbindung (Punkt 1: Schema-Datensatz) übernehmen Sie selbst über Ihren Webentwickler/Agentur — die anderen 6 Bausteine sind direkt einsetzbare Texte."
+    },
+    {
+      "type": "h1",
+      "text": "1. Strukturierter Datensatz (digitaler Steckbrief)"
+    },
+    {
+      "type": "p",
+      "text": "Der maschinenlesbare Steckbrief Ihres Hauses, mit dem KI-Systeme und Suchmaschinen es zuverlässig zuordnen."
+    },
+    {
+      "type": "label",
+      "text": "Befund zu diesem Baustein"
+    },
+    {
+      "type": "p",
+      "text": "Ihr bestehender Datensatz ist inhaltlich fast vollständig — Name, Adresse, Telefon, Koordinaten und Bewertungskategorie stehen bereits korrekt. Zwei Punkte wurden bei der Prüfung gefunden und unten direkt behoben:"
+    },
+    {
+      "type": "bullet",
+      "text": "sameAs fehlte komplett — Ihre Facebook- und Instagram-Seite waren nicht im Datensatz verlinkt."
+    },
+    {
+      "type": "bullet",
+      "text": "Die Felder „image“ und „logo“ enthielten unausgefüllte Platzhalter-Adressen aus der Vorlage („[https://ihre-hotel-website.de/foto.jpg]“) statt echter Bild-URLs — technisch zwar „vorhanden“, aber keine echte, ladbare Bilddatei. Ersetzt durch ein tatsächlich auf Ihrer Website vorhandenes, geprüftes Foto."
+    },
+    {
+      "type": "p",
+      "text": "Vollständiger, korrigierter Datensatz — 1:1 zum Einsetzen"
+    },
+    {
+      "type": "code",
+      "text": "{\n  \"@context\": \"https://schema.org\",\n  \"@type\": \"Hotel\",\n  \"name\": \"Hotel Glocknerhof\",\n  \"description\": \"Familiengeführtes 4-Sterne Ferienhotel in Berg im Drautal, Kärnten, in Panoramalage über dem Drautal in der Nationalpark Region Hohe Tauern.\",\n  \"url\": \"https://glocknerhof.at/\",\n  \"image\": \"https://glocknerhof.at/wp-content/uploads/Hotel-Glocknerhof-Kaernten-Urlaub-3.jpg\",\n  \"address\": {\n    \"@type\": \"PostalAddress\",\n    \"streetAddress\": \"17-Kräuterweg 43\",\n    \"addressLocality\": \"Berg im Drautal\",\n    \"postalCode\": \"9771\",\n    \"addressCountry\": \"AT\"\n  },\n  \"geo\": {\n    \"@type\": \"GeoCoordinates\",\n    \"latitude\": 46.74875825299696,\n    \"longitude\": 13.146232245695007\n  },\n  \"telephone\": \"+43 4712 721 0\",\n  \"priceRange\": \"€€€\",\n  \"starRating\": {\n    \"@type\": \"Rating\",\n    \"ratingValue\": \"4\"\n  },\n  \"sameAs\": [\n    \"https://www.facebook.com/hotel.glocknerhof\",\n    \"https://www.instagram.com/glocknerhof/\"\n  ]\n}"
+    },
+    {
+      "type": "label",
+      "text": "Einfügen (selbst umsetzbar)"
+    },
+    {
+      "type": "p",
+      "text": "Bei WordPress mit einem Schema-Plugin (z. B. „Schema & Structured Data for WP“) den bestehenden Hotel-Datensatz öffnen und die Felder „sameAs“ ergänzen sowie „image“/„logo“ auf die oben angegebene echte Bild-URL korrigieren."
+    },
+    {
+      "type": "label",
+      "text": "Agentur-Briefing (wörtlich weitergeben)"
+    },
+    {
+      "type": "quote",
+      "text": "„Bitte im bestehenden JSON-LD-Datensatz (Hotel-Entität) im <head> zwei Korrekturen vornehmen: 1) sameAs mit unseren echten Profil-Links ergänzen (Facebook: https://www.facebook.com/hotel.glocknerhof, Instagram: https://www.instagram.com/glocknerhof/). 2) Die Felder image und logo enthalten aktuell nicht ausgefüllte Platzhalter-URLs aus der Vorlage (‘[https://ihre-hotel-website.de/...]’) — bitte durch echte, auf unserer Domain gehostete Bild-URLs ersetzen.“"
+    },
+    {
+      "type": "label",
+      "text": "Checkliste"
+    },
+    {
+      "type": "checkbullet",
+      "text": "Datensatz im Seitenquelltext sichtbar, gültiges JSON (keine eckigen Klammern mehr in image/logo)"
+    },
+    {
+      "type": "checkbullet",
+      "text": "Google Rich-Results-Test findet eine gültige Hotel-Entität ohne Warnung zu image/logo"
+    },
+    {
+      "type": "checkbullet",
+      "text": "sameAs zeigt auf die echten, aktuellen Profile"
+    },
+    {
+      "type": "h1",
+      "text": "2. H1-Titel + Subheadline für die Startseite"
+    },
+    {
+      "type": "label",
+      "text": "Vorschlag"
+    },
+    {
+      "type": "p",
+      "text": "H1: Hotel Glocknerhof — 4-Sterne Familienhotel in Berg im Drautal"
+    },
+    {
+      "type": "p",
+      "text": "Subheadline: Panoramalage über dem Drautal, eigener Modellflugplatz und Wellness auf 500 m² — Urlaub für die ganze Familie seit Generationen."
+    },
+    {
+      "type": "label",
+      "text": "Einfügen"
+    },
+    {
+      "type": "p",
+      "text": "Großen Titel oben auf der Startseite ersetzen (aktuell nur im <title>-Tag: „Urlaub in Kärnten – Hotel Glocknerhof“, keine eigene sichtbare H1 mit Hausname+Ort gefunden), Subheadline direkt darunter in kleinerer Schrift."
+    },
+    {
+      "type": "label",
+      "text": "Agentur-Briefing"
+    },
+    {
+      "type": "quote",
+      "text": "„H1 als <h1>-Element auf der Startseite einbauen (genau einmal), Subheadline direkt darunter als <p> oder <h2>.“"
+    },
+    {
+      "type": "h1",
+      "text": "3. USP-Box: 4 Alleinstellungsmerkmale"
+    },
+    {
+      "type": "bullet",
+      "text": "Panoramalage — Sonnige Aussicht über das Drautal, direkt in der Nationalpark Region Hohe Tauern."
+    },
+    {
+      "type": "bullet",
+      "text": "Modellflug-Paradies — Hoteleigener Flugplatz mit Flugschule für Modellflugpiloten."
+    },
+    {
+      "type": "bullet",
+      "text": "Wellness & Genuss — 500 m² Badelandschaft, Hallenbad und Kärntner Schmankerl-Küche."
+    },
+    {
+      "type": "bullet",
+      "text": "Familienbetrieb seit 1612 — Herzliche Gastfreundschaft von Familie Seywald, seit Generationen."
+    },
+    {
+      "type": "label",
+      "text": "Einfügen"
+    },
+    {
+      "type": "p",
+      "text": "Kleine Box auf der Startseite, direkt unter der H1 oder als eigener Abschnitt."
+    },
+    {
+      "type": "h1",
+      "text": "4. 20 lokale Keywords"
+    },
+    {
+      "type": "p",
+      "text": "Hotel Berg im Drautal  ·  Familienhotel Kärnten  ·  4-Sterne Hotel Drautal  ·  Wellnesshotel Nationalpark Hohe Tauern  ·  Modellflugurlaub Kärnten  ·  Hotel mit Modellflugplatz  ·  Familienurlaub Drautal  ·  Wanderhotel Kärnten  ·  Golfurlaub Kärnten Hotel  ·  Hotel mit Hallenbad Kärnten  ·  Skiurlaub Emberger Alm Hotel  ·  Ferienhotel Berg im Drautal  ·  Hotel mit Kinderprogramm Kärnten  ·  Wellnesshotel Drautal  ·  Radurlaub Drauradweg Hotel  ·  Hotel Kreuzeckgruppe  ·  Verwöhnpension Kärnten  ·  Hotel mit Golfplatz Kärnten  ·  4-Sterne Familienhotel Österreich  ·  Urlaub Nationalpark Hohe Tauern Hotel"
+    },
+    {
+      "type": "label",
+      "text": "Einfügen"
+    },
+    {
+      "type": "p",
+      "text": "Referenzliste — bei jedem neuen Text 1-2 Begriffe natürlich einflechten; an den Webbetreuer für Meta-Descriptions/Seiten-Titel weitergeben."
+    },
+    {
+      "type": "h1",
+      "text": "5. Google-Business-Text (Kurzbeschreibung)"
+    },
+    {
+      "type": "p",
+      "text": "Der Glocknerhof ist ein familiengeführtes 4-Sterne Ferienhotel in Berg im Drautal, Kärnten, in sonniger Panoramalage über dem Drautal in der Nationalpark Region Hohe Tauern. Familie Seywald empfängt Sie seit Generationen mit herzlicher Kärntner Gastfreundschaft. Das Haus bietet 80 Zimmer und Suiten, eine 500 m² große Wellness-Badelandschaft mit Hallenbad und Sauna sowie einen hoteleigenen Modellflugplatz mit Flugschule — ein besonderer Anziehungspunkt für Modellflugpiloten. Familien schätzen den Erlebnis-Spielplatz, die Kinderprogramme und den wöchentlichen Ausflug zum Tierhof Ebnerbichl. Kulinarisch verwöhnt die Verwöhnpension mit Kärntner Schmankerl-Küche. Jetzt Urlaub in Kärnten anfragen oder direkt zum Bestpreis buchen."
+    },
+    {
+      "type": "note",
+      "text": "(733 von max. 750 Zeichen)"
+    },
+    {
+      "type": "label",
+      "text": "Einfügen"
+    },
+    {
+      "type": "p",
+      "text": "business.google.com → Profil bearbeiten → Beschreibung ersetzen."
+    },
+    {
+      "type": "h1",
+      "text": "6. 3 Meta-Descriptions"
+    },
+    {
+      "type": "sublabel",
+      "text": "A) Startseite (132 Zeichen):"
+    },
+    {
+      "type": "p",
+      "text": "4-Sterne Familienhotel in Berg im Drautal, Kärnten: Panoramalage, Wellness & eigener Modellflugplatz. Jetzt im Glocknerhof anfragen."
+    },
+    {
+      "type": "sublabel",
+      "text": "B) Zimmer-Seite (125 Zeichen):"
+    },
+    {
+      "type": "p",
+      "text": "80 Zimmer und Suiten im Glocknerhof: von Doppelzimmer bis Panoramasuite, viele mit Balkon & Bergblick, schon ab € 124,– p. P."
+    },
+    {
+      "type": "sublabel",
+      "text": "C) Kontakt-Seite (122 Zeichen):"
+    },
+    {
+      "type": "p",
+      "text": "Hotel Glocknerhof, 17-Kräuterweg 43, 9771 Berg im Drautal. Telefon +43 4712 721 0 oder per E-Mail — wir beraten Sie gerne."
+    },
+    {
+      "type": "label",
+      "text": "Einfügen"
+    },
+    {
+      "type": "p",
+      "text": "In WordPress mit SEO-Plugin je Seite im SEO-Snippet-Feld „Beschreibung“ einfügen."
+    },
+    {
+      "type": "h1",
+      "text": "7. „Über uns“ neu"
+    },
+    {
+      "type": "p",
+      "text": "Der Glocknerhof in Berg im Drautal ist ein familiengeführtes 4-Sterne Ferienhotel in sonniger Panoramalage über dem Drautal, mitten in der Nationalpark Region Hohe Tauern. Das Haus geht auf einen alten Bauernhof zurück, dessen Geschichte urkundlich bis ins Jahr 1612 zurückreicht — seit Generationen ist der Glocknerhof in Familienbesitz. Heute führt Familie Seywald das Hotel mit 80 Zimmern und Suiten in gepflegtem alpenländischem Stil, viele davon mit Panoramaausblick ins Drautal."
+    },
+    {
+      "type": "p",
+      "text": "Was den Glocknerhof besonders macht, ist die Verbindung aus Erholung und Aktivurlaub: eine 500 m² große Wellness-Badelandschaft mit Hallenbad, Sauna, Whirlpool und Dampfbad lädt zum Entspannen ein, während drinnen wie draußen zahlreiche Sportmöglichkeiten warten — von Tennis über Golf auf dem hauseigenen 9-Loch-Platz Draugolf bis zum Wandern und Radfahren am Drauradweg. Eine echte Besonderheit ist der hoteleigene Modellflugplatz mit eigener Flugschule — der Glocknerhof positioniert sich klar als Adresse für Modellflugpiloten und alle, die es werden wollen. Kulinarisch verwöhnt die Verwöhnpension mit Kärntner Schmankerl-Küche, vielem aus eigener Landwirtschaft und dem hausgemachten 17-Kräuter-Schnaps aus eigener Brennerei."
+    },
+    {
+      "type": "p",
+      "text": "Für wen ist der Glocknerhof da? Vor allem für Familien: Der Erlebnis-Spielplatz mit Rapunzelburg und Streichelzoo, das Freischwimmbad mit 35-Meter-Wasserrutsche, eigene Kinderprogramme und der wöchentliche Ausflug zum Tierhof Ebnerbichl mit Ponyreiten sorgen dafür, dass sich schon die Kleinsten wohlfühlen. Gleichzeitig genießen Erwachsene die Erholung der Panoramalage, den Wellnessbereich und die Gastfreundschaft, die so manchen Stammgast seit über 30 Jahren zurückkehren lässt. Fast das ganze Jahr über — von Weihnachten bis Mitte Oktober durchgehend — heißt Familie Seywald ihre Gäste im Glocknerhof willkommen."
+    },
+    {
+      "type": "note",
+      "text": "(246 Wörter)"
+    },
+    {
+      "type": "label",
+      "text": "Einfügen"
+    },
+    {
+      "type": "p",
+      "text": "Als „Über uns“-Seite einfügen bzw. bestehenden Text ersetzen."
+    },
+    {
+      "type": "h1",
+      "text": "Warum zählt mehr KI-Sichtbarkeit für Ihren Betrieb?"
+    },
+    {
+      "type": "bullet",
+      "text": "Gäste fragen zunehmend KI-Assistenten statt (nur) Google — wer dort technisch nicht lesbar ist, wird bei der Antwort schlicht nicht erwähnt, unabhängig von der Qualität des eigenen Angebots."
+    },
+    {
+      "type": "bullet",
+      "text": "Strukturierte Daten wirken nicht nur bei KI-Systemen, sondern verbessern auch die klassische Google-Darstellung (Rich Results, Sternebewertung, FAQ-Aufklappboxen direkt im Suchergebnis)."
+    },
+    {
+      "type": "bullet",
+      "text": "Ohne saubere, maschinenlesbare Fakten füllt eine KI Lücken im Zweifel selbst — mit sauberen Daten wird der Betrieb korrekt statt geraten dargestellt."
+    },
+    {
+      "type": "bullet",
+      "text": "Die Maßnahmen sind überwiegend einmalige technische Einrichtung, keine laufenden Kosten wie bei bezahlter Werbung."
+    },
+    {
+      "type": "bullet",
+      "text": "Wer diese Lücken jetzt schließt, wird in einem noch jungen Themenfeld bevorzugt zitiert, bevor mehr Mitbewerber nachziehen."
+    }
+  ],
+  "footer": {
+    "name": "Gernot Riedel Tourism Consulting e.U.",
+    "contact": "kontakt@gernot-riedel.com · +43 676 7237811 · gernot-riedel.com"
+  }
+}

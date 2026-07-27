@@ -92,8 +92,27 @@ Relevante Daten notieren: Name, Adresse, Telefon, Zimmertypen, USPs, Region, Akt
 ### Schritt 2: 8 Bausteine erstellen
 Alle Texte direkt aus den Website-Informationen ableiten — keine eigenständigen Schlussfolgerungen (siehe Kernregel).
 
-### Schritt 3: Ausgabe formatieren
-Als strukturiertes Dokument mit klaren Abschnitten je Baustein.
+### Schritt 3: Ausgabe formatieren — verbindliches GEO-Radar-Design
+
+**Jedes** ausgelieferte Word-Dokument (egal ob 8 oder reduzierte 7 Bausteine)
+wird im GEO-Radar-Design erzeugt, nicht freihändig in Word formatiert.
+Vorlage + Generator: `templates/geo_optimierungspaket/` in diesem Repo.
+
+1. Inhalte (Befund, Signale, Bausteine) in das Report-JSON-Format bringen —
+   Format und Block-Typen (`h1`, `ampel`, `highlight`, `p`, `label`,
+   `sublabel`, `note`, `bullet`, `checkbullet`, `quote`, `code`) sind in
+   `templates/geo_optimierungspaket/README.md` dokumentiert,
+   `example.report.json` ist ein vollständiges Referenzbeispiel (Hotel
+   Glocknerhof).
+2. Generieren: `node templates/geo_optimierungspaket/generate_report.js <report.json> <betrieb>.docx`
+3. Farben/Fonts sind fix (Navy `#1A2332`, Gold `#C9A84C`, Ampelfarben
+   `#27AE60`/`#E67E22`/`#C0392B`, Archivo + Open Sans) — identisch zur
+   Live-App und zum kostenlosen Kurz-Befund-PDF. Nicht abweichen, auch
+   nicht "nur für einen Kunden".
+
+Damit sehen App (kostenloser Check), PDF (Kurz-Befund) und Word-Dokument
+(bezahltes Paket) für den Betrieb wie ein durchgängiges Produkt aus einer
+Hand aus.
 
 ### Schritt 4: E-Mail-Text + Rechnung
 - E-Mail-Begleittext für Kundenversand formulieren
@@ -126,6 +145,7 @@ Als strukturiertes Dokument mit klaren Abschnitten je Baustein.
 - `mailer.py` — Versand (Brevo bevorzugt, SMTP-Fallback), inkl. Diagnose-Funktionen
 - `sheets.py` — Google-Sheets-Schreiblogik (Spalte-A-bündig, Kopfzeilen-Migration)
 - `nap_checker_app.py` — **separates** Tool (NAP-Konsistenz), läuft auf Streamlit Cloud, nicht Teil des Render-Deploys, nicht löschen
+- `templates/geo_optimierungspaket/` — Word-Report-Generator (docx-js) im GEO-Radar-Design für das bezahlte Paket; siehe Schritt 3 oben und die README dort
 - `tests/` — 26 automatisierte Tests (`python -m pytest tests/`)
 
 ### Render-Umgebungsvariablen

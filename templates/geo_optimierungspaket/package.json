@@ -1,0 +1,8 @@
+{
+  "name": "geo-optimierungspaket-report",
+  "private": true,
+  "description": "Word-Report-Generator im GEO-Radar-Design fuer das GEO-Optimierungspaket.",
+  "dependencies": {
+    "docx": "^9.7.1"
+  }
+}
