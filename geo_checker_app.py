@@ -728,32 +728,38 @@ if st.session_state["analyse_done"] and st.session_state["result"]:
             st.markdown("**🤖 KI-Bot Crawlability im Detail (aus Signal 1)**")
             st.markdown("\n".join(bots_html_parts), unsafe_allow_html=True)
 
-    # Verkaufs-Brücke: bei GELB/ROT konkretes Angebot, bei GRÜN weicher Hinweis
-    if befund["verkaufsbruecke"]:
+    # Verkaufs-Brücke: Umfang und Framing richten sich nach paket_umfang, nicht
+    # mehr nur nach GRÜN/nicht-GRÜN — "voll" bei echtem Blocker (ROT) oder
+    # mehreren gleichzeitig offenen Baustellen, "reduziert" bei GRÜN oder
+    # Fast-GRÜN (GELB mit nur einem offenen Signal). Gleicher Preis in beiden
+    # Fällen, unterschiedlicher, ehrlicher Leistungsumfang.
+    bausteine_liste = "".join(f"<li>{b}</li>" for b in befund["paket_bausteine"])
+    if befund["paket_umfang"] == "voll":
         st.markdown(f"""
         <div class="cta-box">
           <h3>Ihre Ampel steht auf {befund['overall']} — wir bringen sie auf GRÜN.</h3>
           <p>
-            Das <strong>GEO-Optimierungspaket Professional (€ 149)</strong> setzt die oben
-            genannten Maßnahmen in 8 fertige Bausteine um — inklusive dem strukturierten
-            Datensatz (digitaler Steckbrief), der genau das ROT-Ergebnis „Strukturierte
-            Betriebsdaten" behebt: Schema-Steckbrief, FAQ, Startseiten-Überschrift,
-            USP-Box, lokale Keywords, Google-Business-Text, Meta-Descriptions und ein neuer
-            „Über uns"-Text — geliefert innerhalb von 24 Stunden, ohne technisches Vorwissen.
+            Das <strong>GEO-Optimierungspaket (€ 149)</strong> setzt die oben genannten
+            Maßnahmen fertig formuliert um — geliefert innerhalb von 24 Stunden, ohne
+            technisches Vorwissen:
           </p>
+          <ul>{bausteine_liste}</ul>
           <p style="font-size:13px;opacity:0.7;">Einmalig € 149 · kein Abo · Upgrade auf ReviewRadar möglich</p>
         </div>
         """, unsafe_allow_html=True)
     else:
-        st.markdown("""
+        anlass = ("Die Technik trägt bereits vollständig" if befund["overall"] == "GRÜN"
+                  else "Die Technik trägt bis auf eine kleine Lücke")
+        st.markdown(f"""
         <div class="cta-box">
-          <h3>Ampel GRÜN — jetzt den Vorsprung ausbauen</h3>
+          <h3>Ampel {befund['overall']} — GEO-Optimierungspaket im reduzierten Umfang, gleicher Preis</h3>
           <p>
-            Die Technik trägt. Der nächste Hebel sind Ihre Inhalte: Als TÜV-zertifizierter
-            KI-Trainer mit 30+ Jahren Tourismus-Erfahrung im DACH-Raum helfe ich Ihnen,
-            aus Sichtbarkeit auch Buchungen zu machen.
+            {anlass} — Sie bekommen deshalb nur die tatsächlich noch sinnvollen Bausteine,
+            nicht das volle 8-Bausteine-Programm. Das <strong>GEO-Optimierungspaket (€ 149)</strong>
+            läuft für Sie im reduzierten Umfang, zum selben Preis:
           </p>
-          <p style="font-size:13px;opacity:0.7;">GEO-Optimierungspaket · ReviewRadar · Workshops & Beratung</p>
+          <ul>{bausteine_liste}</ul>
+          <p style="font-size:13px;opacity:0.7;">Einmalig € 149 · reduzierter Umfang · kein Abo · Upgrade auf ReviewRadar möglich</p>
         </div>
         """, unsafe_allow_html=True)
 

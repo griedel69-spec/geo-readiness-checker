@@ -156,24 +156,36 @@ def erzeuge_kurzbefund_pdf(lead: dict, befund: dict) -> bytes:
             teile.append(Spacer(1, 1.5 * mm))
         teile.append(Spacer(1, 3 * mm))
 
-    if befund["verkaufsbruecke"]:
-        vb = Table([[Paragraph(
-            '<font color="#c9a84c"><b>Unser Angebot: GEO-Optimierungspaket Professional — € 149</b></font><br/>'
-            '<font color="white">Wir setzen die oben genannten Punkte in 8 fertige Bausteine um — '
-            'inklusive dem strukturierten Datensatz (digitaler Steckbrief), der das ROT-Ergebnis '
-            '"Strukturierte Betriebsdaten" behebt: Schema-Steckbrief, FAQ, Startseiten-Überschrift, '
-            'USP-Box, lokale Keywords, Google-Business-Text, Meta-Descriptions und ein neuer '
-            '"Über uns"-Text — geliefert innerhalb von 24 Stunden. '
-            'Antworten Sie einfach auf diese E-Mail.</font>',
-            STYLES["normal"])]], colWidths=[170 * mm])
-        vb.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, -1), DUNKEL),
-            ("LEFTPADDING", (0, 0), (-1, -1), 6 * mm),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 6 * mm),
-            ("TOPPADDING", (0, 0), (-1, -1), 4 * mm),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 4 * mm),
-        ]))
-        teile += [vb, Spacer(1, 4 * mm)]
+    # Angebot: Umfang und Wortlaut richten sich nach paket_umfang ("voll" bei
+    # echtem Blocker/mehreren offenen Baustellen, "reduziert" bei GRÜN oder
+    # Fast-GRÜN) - gleicher Preis, ehrlich unterschiedlicher Leistungsumfang.
+    bausteine_zeile = ", ".join(befund.get("paket_bausteine", []))
+    if befund.get("paket_umfang") == "voll":
+        angebot_text = (
+            '<font color="#c9a84c"><b>Unser Angebot: GEO-Optimierungspaket — € 149</b></font><br/>'
+            f'<font color="white">Wir setzen die oben genannten Punkte fertig formuliert um: '
+            f'{bausteine_zeile} — geliefert innerhalb von 24 Stunden. '
+            'Antworten Sie einfach auf diese E-Mail.</font>'
+        )
+    else:
+        anlass = ("Die Technik trägt bereits vollständig" if befund.get("overall") == "GRÜN"
+                  else "Die Technik trägt bis auf eine kleine Lücke")
+        angebot_text = (
+            f'<font color="#c9a84c"><b>Unser Angebot: GEO-Optimierungspaket — € 149 '
+            '(reduzierter Umfang)</b></font><br/>'
+            f'<font color="white">{anlass} — Sie bekommen deshalb nur die tatsächlich noch '
+            f'sinnvollen Bausteine, nicht das volle Programm, zum selben Preis: {bausteine_zeile} — '
+            'geliefert innerhalb von 24 Stunden. Antworten Sie einfach auf diese E-Mail.</font>'
+        )
+    vb = Table([[Paragraph(angebot_text, STYLES["normal"])]], colWidths=[170 * mm])
+    vb.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), DUNKEL),
+        ("LEFTPADDING", (0, 0), (-1, -1), 6 * mm),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 6 * mm),
+        ("TOPPADDING", (0, 0), (-1, -1), 4 * mm),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4 * mm),
+    ]))
+    teile += [vb, Spacer(1, 4 * mm)]
 
     teile.append(Paragraph(
         "Hinweis: Automatische Kurz-Prüfung der Startseite (Signale 1–3 des GEO-Radar). "

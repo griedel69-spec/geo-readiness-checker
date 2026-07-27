@@ -126,6 +126,51 @@ VORTEILE_MEHR_SICHTBARKEIT = [
 ]
 
 
+# Bausteine, die unabhängig vom Befund immer Teil des GEO-Optimierungspakets
+# sind (Content-/Marketing-Ebene, kein technischer Fix).
+_IMMER_ENTHALTEN = [
+    "H1-Titel + Subheadline", "USP-Box (4 Merkmale)", "20 lokale Keywords",
+    "Google-Business-Text", "3 Meta-Descriptions", "Über-uns-Text neu",
+]
+
+
+def _pakete_bausteine(signale) -> list:
+    """
+    Welche der 8 Bausteine sind für DIESEN Befund tatsächlich relevant.
+    Schema-Datensatz/FAQ nur, wenn Signal 2 nicht schon GRÜN ist — bei
+    GRÜN sind Kernfelder, FAQPage und sameAs bereits vollständig, ein neuer
+    Datensatz/eine neue FAQ wäre nichts als eine Wiederholung des
+    Vorhandenen. Reihenfolge wie in der Produktionsstufe: FAQ zuerst,
+    dann Schema-Datensatz, dann die Content-Bausteine.
+    """
+    s2 = next(s for s in signale if s["key"] == "s2")
+    bausteine = list(_IMMER_ENTHALTEN)
+    if s2["status"] != "GRÜN":
+        bausteine.insert(0, "Strukturierter Datensatz (digitaler Steckbrief)")
+        if "faqpage" in s2["grund"].lower():
+            bausteine.insert(0, "FAQ mit 10 Fragen")
+    return bausteine
+
+
+def _paket_umfang(overall: str, signale: list) -> str:
+    """
+    "reduziert" (GRÜN/Fast-GRÜN — GEO-Optimierungspaket zum gleichen Preis,
+    aber ohne die technisch nicht nötigen Bausteine) vs. "voll" (echter
+    Blocker oder mehrere offene Baustellen gleichzeitig).
+
+    ROT ist IMMER "voll" — ein Blocker ("KI findet den Betrieb gar nicht")
+    ist etwas anderes als eine kleine Lücke, unabhängig davon, wie viele
+    Signale betroffen sind. UNBEKANNT-Signale zählen als "offen": ohne
+    belastbaren Befund darf der Umfang nicht leise reduziert werden.
+    """
+    if overall == "ROT" or any(s["status"] == "UNBEKANNT" for s in signale):
+        return "voll"
+    offene_signale = sum(1 for s in signale if s["status"] != "GRÜN")
+    if overall == "GRÜN" or (overall == "GELB" and offene_signale <= 1):
+        return "reduziert"
+    return "voll"
+
+
 def baue_befund(s1, s2, s3) -> dict:
     """
     Nimmt RobotsResult, SchemaResult, RenderingResult und liefert ein
@@ -158,6 +203,8 @@ def baue_befund(s1, s2, s3) -> dict:
         "positionierung": POSITIONIERUNG_HINWEIS if empfehlungen else "",
         "vorteile": VORTEILE_MEHR_SICHTBARKEIT,
         "verkaufsbruecke": overall in ("GELB", "ROT"),
+        "paket_umfang": _paket_umfang(overall, signale),
+        "paket_bausteine": _pakete_bausteine(signale),
     }
 
 

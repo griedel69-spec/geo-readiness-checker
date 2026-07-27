@@ -93,3 +93,49 @@ def test_befund_traegt_vorteile_immer_auch_bei_gruen():
     b = baue_befund(_res("GRÜN"), _res("GRÜN"), _res("GRÜN"))
     assert b["vorteile"] == VORTEILE_MEHR_SICHTBARKEIT
     assert len(b["vorteile"]) >= 3
+
+
+# ── Paket-Umfang (GRÜN/Fast-GRÜN: reduzierter Umfang, gleicher Preis) ──
+
+def test_paket_umfang_gruen_ist_reduziert():
+    b = baue_befund(_res("GRÜN"), _res("GRÜN"), _res("GRÜN"))
+    assert b["paket_umfang"] == "reduziert"
+    # Bei durchgehend GRÜN sind weder Schema-Datensatz noch FAQ noetig.
+    assert b["paket_bausteine"] == [
+        "H1-Titel + Subheadline", "USP-Box (4 Merkmale)", "20 lokale Keywords",
+        "Google-Business-Text", "3 Meta-Descriptions", "Über-uns-Text neu",
+    ]
+
+
+def test_paket_umfang_fast_gruen_ist_reduziert_mit_einem_offenen_baustein():
+    """GELB, aber nur EIN Signal nicht GRÜN ('Fast-GRÜN') -> reduzierter Umfang,
+    Schema-Datensatz bleibt drin (Signal 2 nicht perfekt), FAQ nicht (vorhanden)."""
+    b = baue_befund(_res("GRÜN"), _res("GELB", "kein sameAs"), _res("GRÜN"))
+    assert b["overall"] == "GELB"
+    assert b["paket_umfang"] == "reduziert"
+    assert "Strukturierter Datensatz (digitaler Steckbrief)" in b["paket_bausteine"]
+    assert "FAQ mit 10 Fragen" not in b["paket_bausteine"]
+
+
+def test_paket_umfang_gelb_mit_zwei_offenen_signalen_ist_voll():
+    b = baue_befund(_res("GRÜN"), _res("GELB", "keine FAQPage"), _res("GELB", "Adresse fehlt"))
+    assert b["overall"] == "GELB"
+    assert b["paket_umfang"] == "voll"
+    assert "FAQ mit 10 Fragen" in b["paket_bausteine"]
+    assert "Strukturierter Datensatz (digitaler Steckbrief)" in b["paket_bausteine"]
+
+
+def test_paket_umfang_rot_ist_immer_voll_auch_mit_nur_einem_offenen_signal():
+    """ROT ist ein echter Blocker, unabhaengig davon, wie viele Signale
+    betroffen sind - NIE reduzierter Umfang."""
+    b = baue_befund(_res("GRÜN"), _res("ROT", "kein JSON-LD"), _res("GRÜN"))
+    assert b["overall"] == "ROT"
+    assert b["paket_umfang"] == "voll"
+
+
+def test_paket_umfang_mit_unbekanntem_signal_bleibt_vorsichtshalber_voll():
+    """UNBEKANNT zaehlt als 'offen' - ohne belastbaren Befund darf der Umfang
+    nicht leise reduziert werden, selbst wenn die anderen zwei GRÜN sind."""
+    b = baue_befund(_res("GRÜN"), _res("UNBEKANNT", "HTML nicht ladbar"), _res("GRÜN"))
+    assert b["overall"] == "GELB"
+    assert b["paket_umfang"] == "voll"
