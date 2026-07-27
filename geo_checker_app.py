@@ -636,6 +636,8 @@ if st.session_state["analyse_done"] and st.session_state["result"]:
         st.subheader("📋 Handlungsempfehlungen für Ihren Betrieb")
         st.markdown("Basierend auf der Analyse ergeben sich folgende **konkrete Maßnahmen**, "
                     "priorisiert nach Wirkung auf Ihre KI-Sichtbarkeit:")
+        if befund.get("positionierung"):
+            st.caption(f"ℹ️ {befund['positionierung']}")
 
     if befund["empfehlungen"]:
         st.markdown("##### 🚦 Aus den drei Prüfbereichen (höchste Priorität)")
@@ -720,6 +722,11 @@ if st.session_state["analyse_done"] and st.session_state["result"]:
             st.markdown("---")
             st.markdown("**🤖 KI-Bot Crawlability im Detail (aus Signal 1)**")
             st.markdown("\n".join(bots_html_parts), unsafe_allow_html=True)
+
+    # Nutzen-Argumentation vor der Verkaufs-Brücke: WARUM sich die Umsetzung
+    # lohnt, bevor das konkrete Angebot kommt.
+    st.subheader("💡 Warum zählt mehr KI-Sichtbarkeit für Ihren Betrieb?")
+    st.markdown("\n".join(f"- {v}" for v in befund["vorteile"]))
 
     # Verkaufs-Brücke: bei GELB/ROT konkretes Angebot, bei GRÜN weicher Hinweis
     if befund["verkaufsbruecke"]:

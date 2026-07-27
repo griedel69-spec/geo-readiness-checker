@@ -1,8 +1,14 @@
 """
-Kurz-Befund-PDF (eine A4-Seite) für den GEO-Readiness-Checker.
+Kurz-Befund-PDF (ein bis zwei A4-Seiten) für den GEO-Readiness-Checker.
 
 Erzeugt aus dem Befund-Dict (befund.baue_befund) ein gebrandetes PDF
 als Bytes — kein Netz, keine API, reine reportlab-Erzeugung.
+
+Hinweis Seitenlaenge: seit den konkreten, selbst-/agentur-ausfuehrbaren
+Empfehlungstexten (siehe befund.py, POSITIONIERUNG_HINWEIS) passt der
+Inhalt bei mehreren offenen Befunden (z. B. alle drei Signale ROT) nicht
+mehr auf eine Seite. Bewusste Entscheidung: konkrete, direkt umsetzbare
+Auftraege wiegen schwerer als eine harte Ein-Seiten-Grenze.
 """
 from __future__ import annotations
 
@@ -130,8 +136,19 @@ def erzeuge_kurzbefund_pdf(lead: dict, befund: dict) -> bytes:
     if befund["empfehlungen"]:
         teile.append(Paragraph("Was jetzt zu tun ist", STYLES["h2"]))
         teile.append(Spacer(1, 2 * mm))
+        if befund.get("positionierung"):
+            teile.append(Paragraph(befund["positionierung"], STYLES["klein"]))
+            teile.append(Spacer(1, 2 * mm))
         for i, e in enumerate(befund["empfehlungen"], 1):
             teile.append(Paragraph(f"<b>{i}.</b> {e}", STYLES["normal"]))
+            teile.append(Spacer(1, 1.5 * mm))
+        teile.append(Spacer(1, 3 * mm))
+
+    if befund.get("vorteile"):
+        teile.append(Paragraph("Warum zählt mehr KI-Sichtbarkeit?", STYLES["h2"]))
+        teile.append(Spacer(1, 2 * mm))
+        for v in befund["vorteile"]:
+            teile.append(Paragraph(f"• {v}", STYLES["normal"]))
             teile.append(Spacer(1, 1.5 * mm))
         teile.append(Spacer(1, 3 * mm))
 

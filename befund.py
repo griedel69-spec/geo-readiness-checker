@@ -35,28 +35,95 @@ GESAMT_KLARTEXT = {
 }
 
 # Empfehlungs-Bibliothek je Signal und Status (Klartext, ohne Fachjargon).
+# Jede Empfehlung ist bewusst als AUFTRAG formuliert, nicht nur als Diagnose:
+# ein Satz für die Selbstumsetzung (häufigster Fall: WordPress), ein Satz als
+# direkt weitergebbares Briefing an Webentwickler/Agentur — beides ohne
+# weitere Rückfrage ausführbar.
 _EMPFEHLUNGEN = {
-    ("s1", "ROT"): "Geben Sie die gesperrten KI-Dienste in Ihrer robots.txt frei — "
-                   "solange z. B. ChatGPT- oder Perplexity-Suchdienste blockiert sind, "
-                   "kann Ihr Betrieb dort nicht empfohlen werden.",
-    ("s1", "GELB"): "Prüfen Sie die robots.txt: einzelne KI-Dienste (Trainings-Bots) "
-                    "sind gesperrt. Das wirkt langsam, aber dauerhaft auf Ihre Sichtbarkeit.",
-    ("s1", "UNBEKANNT"): "Die robots.txt Ihrer Website war nicht abrufbar — bitte vom "
-                         "Webentwickler prüfen lassen, ob ein Bot-Blocker aktiv ist.",
-    ("s2", "ROT"): "Lassen Sie eine Schema.org-Auszeichnung als Beherbergungsbetrieb "
-                   "(z. B. Hotel, BedAndBreakfast) mit Name, Adresse, Telefon und Website "
-                   "einbauen — erst damit kann eine KI Ihre Fakten sicher zuordnen.",
-    ("s2", "GELB"): "Ihre Schema.org-Daten sind vorhanden, aber unvollständig — "
-                    "fehlende Kernfelder (z. B. Adresse, Telefon, Bild) ergänzen lassen.",
-    ("s2", "UNBEKANNT"): "Die strukturierten Daten Ihrer Seite konnten nicht geprüft "
-                         "werden — technischen Zustand vom Webentwickler klären lassen.",
+    ("s1", "ROT"): "Öffnen Sie die robots.txt Ihrer Website für die gesperrten KI-Dienste — "
+                   "solange z. B. ChatGPT- oder Perplexity-Suchdienste blockiert sind, kann "
+                   "Ihr Betrieb dort nicht empfohlen werden. Selbst umsetzbar über den "
+                   "Datei-Manager Ihres Hosters (Datei robots.txt im Hauptverzeichnis). "
+                   "Auftrag an Webentwickler/Agentur: „In der robots.txt die Disallow-Regeln "
+                   "für OAI-SearchBot, ChatGPT-User, PerplexityBot, Google-Extended und "
+                   "Bingbot entfernen bzw. durch Allow: / ersetzen.“",
+    ("s1", "GELB"): "Prüfen Sie die robots.txt: einzelne KI-Dienste (Trainings-Bots) sind "
+                    "gesperrt. Das wirkt langsam, aber dauerhaft auf Ihre Sichtbarkeit. Auftrag "
+                    "an Webentwickler/Agentur: „In der robots.txt die Disallow-Regeln für "
+                    "GPTBot, ClaudeBot, CCBot und Applebot-Extended entfernen.“",
+    ("s1", "UNBEKANNT"): "Die robots.txt Ihrer Website war nicht abrufbar. Auftrag an "
+                         "Webentwickler/Agentur: „Bitte robots.txt unter <IhreWebsite>/robots.txt "
+                         "prüfen — warum liefert sie keinen Status 200, und ist ein "
+                         "Bot-Blocker (z. B. Cloudflare-Bot-Management) aktiv, der auch "
+                         "legitime KI-Suchdienste ausschließt?“",
+    ("s2", "ROT"): "Lassen Sie eine Schema.org-Auszeichnung (JSON-LD) als Beherbergungsbetrieb "
+                   "einbauen — erst damit kann eine KI Ihre Fakten (Name, Adresse, Telefon) "
+                   "sicher zuordnen. Bei WordPress erledigt das ein SEO-Plugin wie „Schema & "
+                   "Structured Data for WP“ automatisch, wenn Sie den Betriebstyp (Hotel/"
+                   "BedAndBreakfast/VacationRental) einstellen. Auftrag an Webentwickler/"
+                   "Agentur: „Im <head> der Startseite ein JSON-LD-Datenobjekt vom Typ Hotel/"
+                   "BedAndBreakfast/LodgingBusiness mit name, address (PostalAddress), "
+                   "telephone, url und image einbetten.“",
+    ("s2", "GELB"): "Ihre Schema.org-Daten sind vorhanden, aber unvollständig — fehlende "
+                    "Kernfelder ergänzen. Bei WordPress: im selben SEO-Plugin die noch leeren "
+                    "Felder (Adresse, Telefon, Bild) nachtragen. Auftrag an Webentwickler/"
+                    "Agentur: „Im bestehenden JSON-LD-Datensatz die fehlenden Felder ergänzen "
+                    "(siehe Beleg oben) sowie, falls noch nicht vorhanden, FAQPage und sameAs "
+                    "(Links zu Google-Profil/Buchungsportalen) einbauen.“",
+    ("s2", "UNBEKANNT"): "Die strukturierten Daten Ihrer Seite konnten nicht geprüft werden. "
+                         "Auftrag an Webentwickler/Agentur: „Bitte klären, warum die Startseite "
+                         "beim automatisierten Abruf nicht ladbar war (Serverfehler, "
+                         "SSL-Zertifikat, Bot-Sperre?) und danach erneut auf JSON-LD-Markup "
+                         "prüfen.“",
     ("s3", "ROT"): "Ihre Startseite liefert KI-Crawlern praktisch keinen lesbaren Inhalt "
-                   "(JavaScript-Baustelle). Wichtigste Inhalte müssen ins ausgelieferte HTML.",
+                   "(JavaScript-Baustelle) — die wichtigsten Inhalte müssen bereits im "
+                   "ausgelieferten HTML stehen, nicht erst nach dem Laden im Browser. Das ist "
+                   "keine reine Text-Änderung mehr, sondern ein technischer Eingriff. Auftrag "
+                   "an Webentwickler/Agentur: „Server-Side-Rendering oder statisches "
+                   "Pre-Rendering für die Startseite einrichten, sodass Name, Adresse, "
+                   "Telefon und Kernangebot bereits im initialen HTML enthalten sind — prüfbar "
+                   "über 'Seitenquelltext anzeigen' im Browser.“",
     ("s3", "GELB"): "Stellen Sie sicher, dass Adresse, Telefon und die wichtigsten Inhalte "
-                    "direkt im HTML der Startseite stehen — nicht erst nach Klicks oder Skripten.",
-    ("s3", "UNBEKANNT"): "Die Startseite war für die automatische Prüfung nicht erreichbar — "
-                         "Erreichbarkeit und Bot-Freigaben prüfen lassen.",
+                    "direkt im HTML der Startseite stehen — nicht erst nach Klicks oder "
+                    "Skripten. Selbst prüfbar: Rechtsklick auf die Startseite → "
+                    "„Seitenquelltext anzeigen“ → mit Strg+F nach Ihrer Telefonnummer suchen. "
+                    "Auftrag an Webentwickler/Agentur: „Adresse und Telefonnummer als reinen "
+                    "Text (nicht als Bild, nicht nur im Kontaktformular) im Footer oder "
+                    "Kontaktbereich der Startseite ergänzen.“",
+    ("s3", "UNBEKANNT"): "Die Startseite war für die automatische Prüfung nicht erreichbar. "
+                         "Auftrag an Webentwickler/Agentur: „Bitte Erreichbarkeit der "
+                         "Startseite prüfen (Serverstatus, SSL-Zertifikat) und klären, ob ein "
+                         "Bot-/Sicherheitsfilter automatisierte Abrufe blockiert.“",
 }
+
+# Wird als eigener Absatz gezeigt, bevor die Empfehlungen aufgelistet werden —
+# stellt unmissverständlich klar, wer was liefert.
+POSITIONIERUNG_HINWEIS = (
+    "Diese Prüfung liefert die Analyse und die konkreten Umsetzungsempfehlungen. Die "
+    "technische Umsetzung selbst erfolgt bei Ihnen im Haus oder durch Ihren Webentwickler "
+    "bzw. Ihre Agentur — jede Empfehlung unten ist so formuliert, dass Sie sie bei "
+    "ausreichender technischer Erfahrung selbst umsetzen oder unverändert als Auftrag "
+    "weitergeben können."
+)
+
+# Konkrete, nicht quantifizierte Nutzenargumente — keine erfundenen Statistiken,
+# nur nachvollziehbare Mechanik (Null-Halluzination-Regel gilt auch hier).
+VORTEILE_MEHR_SICHTBARKEIT = [
+    "Gäste fragen zunehmend KI-Assistenten statt (nur) Google — wer dort technisch nicht "
+    "lesbar ist, wird bei der Antwort schlicht nicht erwähnt, unabhängig von der Qualität "
+    "des eigenen Angebots.",
+    "Strukturierte Daten wirken nicht nur bei KI-Systemen, sondern verbessern auch die "
+    "klassische Google-Darstellung (Rich Results, Sternebewertung, FAQ-Aufklappboxen direkt "
+    "im Suchergebnis).",
+    "Ohne saubere, maschinenlesbare Fakten füllt eine KI Lücken im Zweifel selbst — mit "
+    "sauberen Daten wird der Betrieb korrekt statt geraten dargestellt (falsche Öffnungszeiten "
+    "oder Preise in einer KI-Antwort schaden mehr, als gar nicht erwähnt zu werden).",
+    "Die Maßnahmen sind überwiegend einmalige technische Einrichtung, keine laufenden Kosten "
+    "wie bei bezahlter Werbung — der Effekt bleibt bestehen, solange die Daten aktuell "
+    "gehalten werden.",
+    "Wer diese Lücken jetzt schließt, wird in einem noch jungen Themenfeld bevorzugt "
+    "zitiert, bevor mehr Mitbewerber nachziehen.",
+]
 
 
 def baue_befund(s1, s2, s3) -> dict:
@@ -88,6 +155,8 @@ def baue_befund(s1, s2, s3) -> dict:
         "klartext": GESAMT_KLARTEXT[overall],
         "signale": signale,
         "empfehlungen": empfehlungen,
+        "positionierung": POSITIONIERUNG_HINWEIS if empfehlungen else "",
+        "vorteile": VORTEILE_MEHR_SICHTBARKEIT,
         "verkaufsbruecke": overall in ("GELB", "ROT"),
     }
 

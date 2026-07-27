@@ -40,3 +40,13 @@ def test_pdf_unbekannt():
                          _res("UNBEKANNT", "HTML nicht ladbar"))
     pdf = erzeuge_kurzbefund_pdf(LEAD, befund)
     assert pdf.startswith(b"%PDF")
+
+
+def test_pdf_baut_auch_ohne_vorteile_und_positionierung():
+    """Robustheit: fehlen die neuen optionalen Felder (z. B. alter Aufrufer-Code
+    ohne diese Keys), darf das PDF trotzdem nicht crashen."""
+    befund = baue_befund(_res("ROT"), _res("ROT"), _res("ROT"))
+    befund.pop("vorteile", None)
+    befund["positionierung"] = ""
+    pdf = erzeuge_kurzbefund_pdf(LEAD, befund)
+    assert pdf.startswith(b"%PDF")
