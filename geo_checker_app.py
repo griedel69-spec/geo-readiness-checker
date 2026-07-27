@@ -567,6 +567,11 @@ if st.session_state["analyse_done"] and st.session_state["result"]:
     </div>
     """, unsafe_allow_html=True)
 
+    # Nutzen-Argumentation ZUERST: WARUM das Ergebnis unten überhaupt zählt,
+    # bevor die technischen Details und das Angebot kommen.
+    st.subheader("💡 Warum zählt mehr KI-Sichtbarkeit für Ihren Betrieb?")
+    st.markdown("\n".join(f"- {v}" for v in befund["vorteile"]))
+
     # Die drei Signale im Detail
     st.subheader("🚦 Die drei Prüfbereiche")
     signal_html = []
@@ -722,11 +727,6 @@ if st.session_state["analyse_done"] and st.session_state["result"]:
             st.markdown("---")
             st.markdown("**🤖 KI-Bot Crawlability im Detail (aus Signal 1)**")
             st.markdown("\n".join(bots_html_parts), unsafe_allow_html=True)
-
-    # Nutzen-Argumentation vor der Verkaufs-Brücke: WARUM sich die Umsetzung
-    # lohnt, bevor das konkrete Angebot kommt.
-    st.subheader("💡 Warum zählt mehr KI-Sichtbarkeit für Ihren Betrieb?")
-    st.markdown("\n".join(f"- {v}" for v in befund["vorteile"]))
 
     # Verkaufs-Brücke: bei GELB/ROT konkretes Angebot, bei GRÜN weicher Hinweis
     if befund["verkaufsbruecke"]:

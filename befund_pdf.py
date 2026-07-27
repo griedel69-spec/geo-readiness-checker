@@ -130,6 +130,18 @@ def erzeuge_kurzbefund_pdf(lead: dict, befund: dict) -> bytes:
 
     teile = _kopf(lead.get("betrieb", ""), lead.get("ort", ""), lead.get("website", ""))
     teile += [_ampelbox(befund), Spacer(1, 5 * mm)]
+
+    # Nutzen-Argumentation ZUERST, direkt nach der Ampel: WARUM das Ergebnis
+    # unten überhaupt zählt, bevor die technischen Details und das Angebot
+    # kommen.
+    if befund.get("vorteile"):
+        teile.append(Paragraph("Warum zählt mehr KI-Sichtbarkeit?", STYLES["h2"]))
+        teile.append(Spacer(1, 2 * mm))
+        for v in befund["vorteile"]:
+            teile.append(Paragraph(f"• {v}", STYLES["normal"]))
+            teile.append(Spacer(1, 1.5 * mm))
+        teile.append(Spacer(1, 3 * mm))
+
     teile += [Paragraph("Die drei Prüfbereiche im Detail", STYLES["h2"]),
               Spacer(1, 2 * mm), _signaltabelle(befund), Spacer(1, 5 * mm)]
 
@@ -141,14 +153,6 @@ def erzeuge_kurzbefund_pdf(lead: dict, befund: dict) -> bytes:
             teile.append(Spacer(1, 2 * mm))
         for i, e in enumerate(befund["empfehlungen"], 1):
             teile.append(Paragraph(f"<b>{i}.</b> {e}", STYLES["normal"]))
-            teile.append(Spacer(1, 1.5 * mm))
-        teile.append(Spacer(1, 3 * mm))
-
-    if befund.get("vorteile"):
-        teile.append(Paragraph("Warum zählt mehr KI-Sichtbarkeit?", STYLES["h2"]))
-        teile.append(Spacer(1, 2 * mm))
-        for v in befund["vorteile"]:
-            teile.append(Paragraph(f"• {v}", STYLES["normal"]))
             teile.append(Spacer(1, 1.5 * mm))
         teile.append(Spacer(1, 3 * mm))
 
