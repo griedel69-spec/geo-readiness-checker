@@ -3,6 +3,12 @@
 **Stand: 21.07.2026 — LIVE auf Render.** Kompletter Testlauf bestanden
 (Analyse haus-steger.at, PDF an Betrieb, Benachrichtigung an Gernot).
 
+**Update 28.07.2026:** Render-Auto-Deploy war zwischenzeitlich unterbrochen
+(GitHub-Webhook kaputt — letzter automatischer Deploy war der 21.07., alle
+Pushes danach mussten manuell nachgestoßen werden). Webhook durch
+Neu-Verbindung von Render mit dem GitHub-Repo repariert. Diese Zeile ist
+der Testcommit dafür — wenn er automatisch deployed, funktioniert's wieder.
+
 **Wichtige Betriebsfakten:**
 - **Mail-Versand läuft über die Brevo-Web-API** (`BREVO_API_KEY` + `MAIL_FROM`
   in den Render-Umgebungsvariablen). Grund: Render blockt ausgehende
