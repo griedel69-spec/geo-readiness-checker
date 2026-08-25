@@ -9,7 +9,7 @@ description: GEO-Radar Sichtbarkeitsprüfung direkt im Claude.ai-Chat, ohne CLI/
 
 Dies ist der **Nachbau der geo-radar-CLI-Logik für den reinen Claude.ai-Chat** (kein Python, kein Terminal, keine lokale Installation). Er existiert, weil die eigentliche Betriebsanalyse heute im geo-radar-Ordner per "Neuer Kunde"-Button läuft und dort exakt bleibt — dieser Skill ist für die Fälle gedacht, in denen Gernot **nur den Chat** zur Hand hat: unterwegs, bei einem TVB-Gespräch, ohne Rechner mit der geo-radar-Installation.
 
-**Quelle und Stand:** Jede Regel unten (Bot-Listen, Schwellenwerte, Entscheidungsbäume, Baustein-Prompts, Kostenkonstanten) ist wortgetreu aus dem geo-radar-Quellcode übernommen, Repo `griedel69-spec/geo-radar`, Commit `c6546a3839829776ccbfc3b24d384057e4ad1817`, Module `src/signal1_robots.py`, `src/signal2_schema.py`, `src/signal3_rendering.py`, `src/scanner.py`, `src/report.py`, `src/production.py`. Nichts davon ist aus dem Gedächtnis oder angenähert formuliert. Wenn geo-radar sich weiterentwickelt, kann dieser Skill veralten — im Zweifel gilt der Code im geo-radar-Repo, nicht dieser Text.
+**Quelle und Stand:** Jede Regel unten (Bot-Listen, Schwellenwerte, Entscheidungsbäume, Baustein-Prompts, Kostenkonstanten) ist wortgetreu aus dem geo-radar-Quellcode übernommen, Repo `griedel69-spec/geo-radar`, Commit `977a749e4ecbb64c24afd6ac6dc4c5fc48c23633` (zuletzt gegengeprüft am 25.08.2026; zuvor gepinnt auf `c6546a3839829776ccbfc3b24d384057e4ad1817`), Module `src/signal1_robots.py`, `src/signal2_schema.py`, `src/signal3_rendering.py`, `src/scanner.py`, `src/report.py`, `src/production.py`. Nichts davon ist aus dem Gedächtnis oder angenähert formuliert. Wenn geo-radar sich weiterentwickelt, kann dieser Skill veralten — im Zweifel gilt der Code im geo-radar-Repo, nicht dieser Text.
 
 **Zwei eingebaute Grenzen, ehrlich benannt:**
 
@@ -64,13 +64,14 @@ Ablauf für **einen** Betrieb (Domain, z. B. `hotel-example.at`):
 3. **Entscheidungsbaum, in dieser Reihenfolge:**
    - **0 JSON-LD-Blöcke gefunden** → **ROT**, "kein JSON-LD-Markup auf der Seite gefunden".
    - **Blöcke vorhanden, aber alle unparsbar** (kaputtes JSON) → **UNBEKANNT**, "vorhanden, aber technisch defekt" (Ehrlichkeitsregel: nicht als ROT werten, es könnte ja korrekt gemeint sein).
-   - Sonst: alle `@type`-Werte sammeln. Gültige Lodging-Typen (**exakt diese Menge**): `Hotel, Resort, BedAndBreakfast, Hostel, LodgingBusiness, Apartment, VacationRental`. Findet sich **keine** Entität mit einem dieser Typen → **ROT**, "keine Lodging-Entität … Gefunden: <tatsächlich gefundene Typen>" (z. B. nur `WebSite`, `Organization`, `LocalBusiness` zählen nicht als Lodging).
+   - Sonst: alle `@type`-Werte sammeln. Gültige Lodging-Typen (**exakt diese Menge — seit dem August-2026-Update auch `Campground` und `Motel`**): `Hotel, Resort, BedAndBreakfast, Hostel, LodgingBusiness, Apartment, VacationRental, Campground, Motel`. Findet sich **keine** Entität mit einem dieser Typen → **ROT**, "keine Lodging-Entität … Gefunden: <tatsächlich gefundene Typen>" (z. B. nur `WebSite`, `Organization`, `LocalBusiness` zählen nicht als Lodging).
    - Lodging-Entität gefunden (bei mehreren: die mit den meisten belegten Kernfeldern) → Kernfelder prüfen: **`name, address, geo, telephone, url, image`**. Details:
      - `address` zählt nur, wenn strukturiert als `PostalAddress` mit mindestens Straße, PLZ oder Ort — Fließtext-Adresse zählt nicht.
      - `geo` zählt nur mit numerisch gültigem `latitude` UND `longitude`.
      - `image` zählt als String, Liste von Strings/ImageObjects oder einzelnes ImageObject mit `url`/`contentUrl`.
    - Zusätzlich prüfen: **FAQPage** irgendwo im JSON-LD vorhanden? **sameAs** (Social-Media-Links) auf der Lodging-Entität vorhanden?
-   - **GRÜN**, nur wenn: alle 6 Kernfelder vorhanden UND FAQPage vorhanden UND sameAs vorhanden.
+   - **FAQ-Unterseiten-Prüfung (Glocknerhof-Fix), bevor "keine FAQPage" feststeht:** FAQPage-Markup gehört laut Google-Richtlinie auf die Seite, auf der die FAQ tatsächlich sichtbar ist — typischerweise eine Unterseite, nicht die Startseite. Findet sich auf der Startseite kein FAQPage, bis zu 3 FAQ-Kandidaten derselben Domain nachprüfen: Links auf der Startseite, deren href oder Ankertext eines der Schlüsselwörter `faq`, `fragen`, `wissenswert` enthält, plus die Standardpfade `/faq`, `/faqs`, `/haeufige-fragen`, `/fragen`. Trägt eine dieser Seiten gültiges FAQPage-JSON-LD, gilt FAQPage als erfüllt (Beleg nennt die Fundstelle, z. B. "FAQPage auf /zimmer-preise/wissenswertes-faq/"). Wird nichts gefunden, bleibt der Befund "keine FAQPage" — jetzt präzisiert um die Anzahl geprüfter Unterseiten (z. B. "keine FAQPage (Startseite + 2 FAQ-Unterseite(n) geprüft)"). Wichtig für die Weiterverarbeitung: der Wortlaut "keine FAQPage" bleibt in jedem Fall exakt erhalten, weil Abschnitt 2.3 unten (`bausteine_aus_befund`) genau auf diese Phrase prüft, um zu entscheiden, ob der FAQ-Baustein erzeugt wird.
+   - **GRÜN**, nur wenn: alle 6 Kernfelder vorhanden UND FAQPage vorhanden (Startseite oder nachgewiesene Unterseite) UND sameAs vorhanden.
    - Sonst **GELB**, mit genauer Lückenliste ("Kernfelder fehlen: …", "keine FAQPage", "kein sameAs").
    - Empfohlene, aber nicht blockierende Zusatzfelder (nur informativ, kein Einfluss auf die Ampel): `priceRange, amenityFeature, checkinTime, checkoutTime`.
 
@@ -213,7 +214,7 @@ Checkliste: Seite über Hauptmenü erreichbar; JSON-LD im `<head>` eingebunden; 
 
 **2. Strukturierter Datensatz (digitaler Steckbrief)** — *Der maschinenlesbare Steckbrief des Hauses, mit dem KI-Systeme und Suchmaschinen es zuverlässig zuordnen.*
 
-> Erzeuge einen strukturierten Datensatz (JSON-LD) für dieses Haus. Als `@type` ist AUSSCHLIESSLICH einer dieser gültigen Schema.org-Lodging-Typen erlaubt: `BedAndBreakfast, Campground, Hostel, Hotel, Motel, Resort, VacationRental, LodgingBusiness`. Deutsche Betriebsbezeichnungen sind KEINE gültigen Typen: eine Pension/Frühstückspension ist `BedAndBreakfast`, eine Ferienwohnung/ein Apartmenthaus ist `VacationRental`, ein Gasthof oder jeder unklare Fall ist `LodgingBusiness`.
+> Erzeuge einen strukturierten Datensatz (JSON-LD) für dieses Haus. Als `@type` ist AUSSCHLIESSLICH einer dieser gültigen Schema.org-Lodging-Typen erlaubt: `Apartment, BedAndBreakfast, Campground, Hostel, Hotel, Motel, Resort, VacationRental oder LodgingBusiness`. Deutsche Betriebsbezeichnungen sind KEINE gültigen Typen: eine Pension/Frühstückspension ist `BedAndBreakfast`, eine Ferienwohnung/ein Apartmenthaus ist `VacationRental`, ein Gasthof oder jeder unklare Fall ist `LodgingBusiness`.
 >
 > Vollständige Kernfelder: `name`, `address` (PostalAddress mit street, postalCode, addressLocality, addressCountry), `telephone`, `url`, `image`, `priceRange`, `geo` (GeoCoordinates), `amenityFeature`, `checkinTime`, `checkoutTime`, `starRating` (NUR wenn die Sterne-Kategorie in den Fakten steht: `{"@type": "Rating", "ratingValue": <Zahl>}`), `sameAs` (Social-Media-Profile, falls in Fakten genannt).
 >
@@ -381,12 +382,14 @@ Für sehr große Mitgliederlisten (Richtwert: >20-30 Betriebe) im Chat kurz ansa
 
 ## 5. Quellenverweis
 
-Alle Regeln oben stammen wortgetreu aus: Repo `griedel69-spec/geo-radar`, Commit `c6546a3839829776ccbfc3b24d384057e4ad1817`.
-- Signal 1: `src/signal1_robots.py` (komplett)
-- Signal 2: `src/signal2_schema.py` (komplett)
-- Signal 3: `src/signal3_rendering.py` (komplett)
-- Batch-Aggregation/Sortierung: `src/scanner.py` (`STATUS_ORDER`, `batch_status`)
-- Gesamt-Ampel Einzelbetrieb: `src/report.py` (`compute_overall`)
-- Produktionsstufe/8 Bausteine/Kontrolldurchlauf/Kostenkonstanten: `src/production.py` (`BAUSTEINE`-Dict, `bausteine_aus_befund`, `technische_fehler_aus_befund`, `erkenne_vorhandene_faq`, `verankere_fakten`, `KONTROLLE_SYSTEM_PROMPT`, `MAX_KOSTEN_PRO_LAUF_USD`/`MAX_KOSTEN_PRO_HAUS_USD`, `CRAWL_PFADE`/`CRAWL_LINK_HINTS`)
+Alle Regeln oben stammen wortgetreu aus: Repo `griedel69-spec/geo-radar`, Commit `977a749e4ecbb64c24afd6ac6dc4c5fc48c23633` (gegengeprüft 25.08.2026).
+- Signal 1: `src/signal1_robots.py` (komplett; Bot-Listen und Entscheidungslogik seit dem vorigen Pin unverändert)
+- Signal 2: `src/signal2_schema.py` (komplett; LODGING_TYPES um `Campground`/`Motel` erweitert, FAQ-Unterseiten-Prüfung neu — siehe Schritt B oben)
+- Signal 3: `src/signal3_rendering.py` (komplett; Schwellenwerte/Entscheidungsbaum unverändert)
+- Batch-Aggregation/Sortierung: `src/scanner.py` (`STATUS_ORDER`, `batch_status` — unverändert)
+- Gesamt-Ampel Einzelbetrieb: `src/report.py` (`compute_overall` — unverändert)
+- Produktionsstufe/8 Bausteine/Kontrolldurchlauf/Kostenkonstanten: `src/production.py` (`BAUSTEINE`-Dict, `bausteine_aus_befund`, `technische_fehler_aus_befund`, `erkenne_vorhandene_faq`, `verankere_fakten`, `KONTROLLE_SYSTEM_PROMPT`, `MAX_KOSTEN_PRO_LAUF_USD`/`MAX_KOSTEN_PRO_HAUS_USD`, `CRAWL_PFADE`/`CRAWL_LINK_HINTS` — alle unverändert außer der jetzt dynamisch aus `signal2_schema.LODGING_TYPES` gebauten Typenliste im `schema_data`-Prompt, siehe Baustein 2 oben)
+
+**Bekannte Lücke gegenüber dem aktuellen geo-radar-Stand** (bei diesem Update bewusst nicht mitgezogen, da nicht angefragt): `scanner.py` hat inzwischen deutlich robustere CSV-Eingabe (tolerante Spaltennamen, automatische Trennzeichen-Erkennung, Domain-Extraktion aus vollen URLs) und einen automatischen Wiederholungsversuch bei UNBEKANNT-Ergebnissen; `signal2_schema.py` kann optional auch gegen Ausflugsziel-Typen (Museen, Bäder, Schluchten u. ä. statt Lodging-Typen) prüfen, gesteuert über eine `typ`-Spalte in der Eingabeliste — relevant für Regionsanalysen mit gemischten TVB-Mitgliederlisten. Bei Bedarf gesondert nachziehen.
 
 Bei Widerspruch zwischen diesem Text und dem tatsächlichen geo-radar-Code gilt der Code. Dieser Skill sollte bei größeren geo-radar-Änderungen erneut gegen den Quellcode abgeglichen werden.
