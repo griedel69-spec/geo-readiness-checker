@@ -21,9 +21,17 @@ import os
 import re
 import sys
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Optional
 
 import requests
+
+# Damit `from netz_diagnose import ...` funktioniert, egal von wo aufgerufen
+# (gleiches Muster wie signals/__init__.py im geo-readiness-checker-Vendoring).
+_HERE = Path(__file__).parent
+if str(_HERE) not in sys.path:
+    sys.path.insert(0, str(_HERE))
+from netz_diagnose import klassifiziere_exception, klassifiziere_http_status  # noqa: E402
 
 
 # -----------------------------------------------------------------------------
@@ -102,18 +110,23 @@ def _fetch_robots(
     domain: str,
     user_agent: str = DEFAULT_USER_AGENT,
     timeout: int = DEFAULT_TIMEOUT,
-) -> tuple[str, str, int] | tuple[None, None, Optional[int]]:
+) -> tuple[str, str, int, str] | tuple[None, None, Optional[int], str]:
     """
     Holt robots.txt am finalen Host (Redirects folgen).
 
-    Rückgabe bei Erfolg (Status 200):  (final_url, text, 200)
-    Rückgabe bei 404 / anderem 4xx:    (final_url, "", status_code)
+    Rückgabe bei Erfolg (Status 200):  (final_url, text, 200, "")
+    Rückgabe bei 404 / anderem 4xx:    (final_url, "", status_code, "")
                                         -> "keine robots.txt" = alles erlaubt
-    Rückgabe bei Netzwerk-Fehler/5xx:  (None, None, status_code_or_None)
-                                        -> UNBEKANNT
+    Rückgabe bei Netzwerk-Fehler/5xx:  (None, None, status_code_or_None, diagnose)
+                                        -> UNBEKANNT. diagnose ist der tatsächlich
+                                        beobachtete Grund je Verbindungsversuch
+                                        (DNS/SSL/HTTP-Status/Bot-Hinweise) — siehe
+                                        netz_diagnose.py. Leerer String, wenn beide
+                                        Versuche ohne jede Rückmeldung blieben.
     """
     headers = {"User-Agent": user_agent, "Accept": "text/plain, */*;q=0.1"}
     last_status = None
+    versuche: list[str] = []
 
     # Nur 404 und 410 werden als "robots.txt existiert nicht" ausgelegt
     # (siehe HTTP-Spec: 404 = Not Found, 410 = Gone). Andere 4xx wie 401/403
@@ -127,17 +140,19 @@ def _fetch_robots(
             r = requests.get(url, headers=headers, timeout=timeout, allow_redirects=True)
             last_status = r.status_code
             if r.status_code == 200:
-                return r.url, r.text, 200
+                return r.url, r.text, 200, ""
             if r.status_code in ABSENT_STATUS:
                 # Klarer "existiert nicht" -> nach robots.txt-Spec: alles erlaubt.
-                return r.url, "", r.status_code
+                return r.url, "", r.status_code, ""
             # Alles andere (401, 403, sonstiges 4xx, 5xx): unklarer Zugriff.
             # Naechstes Schema probieren, sonst am Ende -> UNBEKANNT.
-        except requests.RequestException:
+            versuche.append(f"{scheme}: {klassifiziere_http_status(r.status_code, r.headers)}")
+        except requests.RequestException as exc:
             # Timeout, DNS-Fehler, Connection-Reset -> nächstes Schema probieren
+            versuche.append(f"{scheme}: {klassifiziere_exception(exc)}")
             continue
 
-    return None, None, last_status
+    return None, None, last_status, " | ".join(versuche)
 
 
 # -----------------------------------------------------------------------------
@@ -411,18 +426,20 @@ def check_robots(
         dom = dom[7:]
     dom = dom.strip("/")
 
-    final_url, text, status = _fetch_robots(dom, user_agent=user_agent, timeout=timeout)
+    final_url, text, status, diagnose = _fetch_robots(dom, user_agent=user_agent, timeout=timeout)
 
     # Netzwerk-Fehler oder 5xx -> UNBEKANNT (Grundregel Nr. 1)
     if final_url is None:
         result = RobotsResult(domain=dom)
-        result.fetch_error = (
-            "robots.txt nicht abrufbar (Timeout/DNS/Connection-Fehler"
-            + (f", letzter Status {status}" if status else "")
-            + ")"
-        )
+        if diagnose:
+            result.fetch_error = f"robots.txt nicht abrufbar — {diagnose}"
+            result.reason = f"robots.txt konnte nicht geladen werden — {diagnose}"
+        else:
+            # Kein einziger Verbindungsversuch kam durch, ohne jede Rückmeldung
+            # (z. B. beide Schemata direkt am DNS gescheitert, ohne Exception-Text).
+            result.fetch_error = "robots.txt nicht abrufbar (kein Detail ermittelt)"
+            result.reason = "robots.txt konnte nicht geladen werden"
         result.overall_status = "UNBEKANNT"
-        result.reason = "robots.txt konnte nicht geladen werden"
         return result
 
     return evaluate_robots_text(text or "", status or 200, dom, final_url)

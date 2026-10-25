@@ -88,7 +88,9 @@ def test_check_schema_glocknerhof_regression(monkeypatch):
             self.url, self.text, self.status_code = url, text, status
 
     def fake_fetch_html(domain, user_agent=None, timeout=None, **_kw):
-        return ("https://www.glocknerhof.at/", _STARTSEITE_MIT_FAQ_LINK, 200)
+        # 4. Rückgabewert = Netz-Diagnose-String (leer bei Erfolg), seit
+        # Vendoring-Stand 56d2d4d Teil der _fetch_html-Signatur.
+        return ("https://www.glocknerhof.at/", _STARTSEITE_MIT_FAQ_LINK, 200, "")
 
     def fake_get(url, **_kw):
         if "wissenswertes-faq" in url:

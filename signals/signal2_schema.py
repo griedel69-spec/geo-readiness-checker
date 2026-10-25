@@ -24,10 +24,17 @@ import json
 import os
 import sys
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Optional
 
 import requests
 from bs4 import BeautifulSoup
+
+# Damit `from netz_diagnose import ...` funktioniert, egal von wo aufgerufen.
+_HERE = Path(__file__).parent
+if str(_HERE) not in sys.path:
+    sys.path.insert(0, str(_HERE))
+from netz_diagnose import klassifiziere_exception, klassifiziere_http_status  # noqa: E402
 
 
 # -----------------------------------------------------------------------------
@@ -35,7 +42,22 @@ from bs4 import BeautifulSoup
 # -----------------------------------------------------------------------------
 
 # Unterkunfts-Typen — die "Lodging-Entität" muss einer davon sein.
-LODGING_TYPES = {
+#
+# EINZIGE QUELLE fuer die gueltigen Lodging-Typen im ganzen Projekt.
+# src/production.py importiert diese Liste (als SCHEMA_LODGING_TYPES) und
+# baut daraus auch den Baustein-Prompt — beide Seiten duerfen NIE eigene
+# Listen fuehren.
+#
+# Warum das ausdruecklich dasteht: bis 2026-08 gab es zwei getrennte
+# Listen. Der Baustein-Prompt erlaubte Campground und Motel, die hiesige
+# Pruefliste kannte beide nicht — ein fuer einen Campingplatz erzeugter
+# Datensatz ergab beim naechsten Scan garantiert wieder ROT (verschaerft
+# dadurch, dass SCHEMA_TYP_MAPPING "camping"/"campingplatz" aktiv auf
+# Campground abbildet). Umgekehrt fehlte Apartment im Prompt, obwohl hier
+# gueltig. Beide Typen sind laut schema.org echte LodgingBusiness-
+# Untertypen und gehoeren in die Liste; die Trennung war der Fehler.
+# Regressionsschutz: tests/test_typen_konsistenz.py
+LODGING_TYPES = frozenset({
     "Hotel",
     "Resort",
     "BedAndBreakfast",
@@ -43,9 +65,37 @@ LODGING_TYPES = {
     "LodgingBusiness",
     "Apartment",
     "VacationRental",
+    "Campground",
+    "Motel",
+})
+
+# Typen für Nicht-Unterkunfts-Betriebe (Ausflugsziele/Attraktionen — Museen,
+# Schluchten, Bäder, Themenwege). Nur relevant bei betriebstyp="ausflugsziel"
+# (siehe check_schema/evaluate_html). Diese Betriebe koennen keine
+# Hotel/BedAndBreakfast-Entitaet tragen, ohne dass das falsch waere — sie
+# brauchen eine eigene, ebenso feste und explizite Typenliste, sonst wuerden
+# sie strukturell nie GRUEN erreichen koennen (Fund aus dem Hohe-Tauern-
+# Regionslauf: 11 von 11 Ausflugszielen bekamen ROT, obwohl sie bei den
+# generischen Signalen 1+3 einwandfrei waren — die Messlatte passte nicht
+# zur Betriebsart, nicht die Website war schlecht).
+# LocalBusiness zaehlt hier bewusst mit (anders als bei LODGING_TYPES) — fuer
+# viele kleine Ausflugsziele gibt es keinen spezifischeren Schema.org-Typ.
+ATTRAKTION_TYPES = {
+    "TouristAttraction",
+    "Museum",
+    "Park",
+    "Zoo",
+    "Aquarium",
+    "AmusementPark",
+    "CivicStructure",
+    "EventVenue",
+    "SportsActivityLocation",
+    "LocalBusiness",
 }
 
 # Generische Typen, die alleine nicht zaehlen — hoechstens ROT.
+# Gilt fuer betriebstyp="unterkunft"; bei "ausflugsziel" zaehlt LocalBusiness
+# nicht als generisch, siehe ATTRAKTION_TYPES oben.
 GENERIC_TYPES = {
     "WebSite",
     "WebPage",
@@ -55,6 +105,10 @@ GENERIC_TYPES = {
     "Article",
     "BlogPosting",
 }
+
+# Gueltige Werte fuer betriebstyp — Default "unterkunft" haelt bestehendes
+# Verhalten fuer alle bisherigen Aufrufer unveraendert.
+BETRIEBSTYPEN = ("unterkunft", "ausflugsziel")
 
 # Kernfelder, die eine Lodging-Entität für GRÜN alle mitbringen muss.
 # Reihenfolge = Report-Reihenfolge.
@@ -130,12 +184,15 @@ def _fetch_html(
     domain: str,
     user_agent: str = DEFAULT_USER_AGENT,
     timeout: int = DEFAULT_TIMEOUT,
-) -> tuple[str, str, int] | tuple[None, None, Optional[int]]:
+) -> tuple[str, str, int, str] | tuple[None, None, Optional[int], str]:
     """
     Holt die Startseite der Domain.
 
-    Rückgabe bei 2xx:      (final_url, html, status)
-    Rückgabe sonst:        (None, None, letzter_status_oder_None) -> UNBEKANNT
+    Rückgabe bei 2xx:      (final_url, html, status, "")
+    Rückgabe sonst:        (None, None, letzter_status_oder_None, diagnose) -> UNBEKANNT.
+                            diagnose ist der tatsächlich beobachtete Grund je
+                            Verbindungsversuch (DNS/SSL/HTTP-Status/Bot-Hinweise),
+                            siehe netz_diagnose.py.
     """
     headers = {
         "User-Agent": user_agent,
@@ -143,6 +200,7 @@ def _fetch_html(
         "Accept-Language": "de-AT,de;q=0.9,en;q=0.7",
     }
     last_status = None
+    versuche: list[str] = []
 
     for scheme in ("https", "http"):
         url = f"{scheme}://{domain}/"
@@ -150,12 +208,14 @@ def _fetch_html(
             r = requests.get(url, headers=headers, timeout=timeout, allow_redirects=True)
             last_status = r.status_code
             if 200 <= r.status_code < 300:
-                return r.url, r.text, r.status_code
+                return r.url, r.text, r.status_code, ""
             # 4xx/5xx: versuche das andere Schema; ansonsten -> UNBEKANNT
-        except requests.RequestException:
+            versuche.append(f"{scheme}: {klassifiziere_http_status(r.status_code, r.headers)}")
+        except requests.RequestException as exc:
+            versuche.append(f"{scheme}: {klassifiziere_exception(exc)}")
             continue
 
-    return None, None, last_status
+    return None, None, last_status, " | ".join(versuche)
 
 
 # -----------------------------------------------------------------------------
@@ -241,6 +301,15 @@ def _type_of(entity: dict) -> list[str]:
 
 def _is_lodging(entity: dict) -> bool:
     return any(t in LODGING_TYPES for t in _type_of(entity))
+
+
+def _relevante_typen(betriebstyp: str) -> set[str]:
+    """Welche @type-Menge als 'gefundene Kern-Entität' zählt, je Betriebsart."""
+    return ATTRAKTION_TYPES if betriebstyp == "ausflugsziel" else LODGING_TYPES
+
+
+def _ist_relevante_entitaet(entity: dict, betriebstyp: str) -> bool:
+    return any(t in _relevante_typen(betriebstyp) for t in _type_of(entity))
 
 
 # -----------------------------------------------------------------------------
@@ -402,6 +471,7 @@ def evaluate_html(
     domain: str = "",
     fetched_url: Optional[str] = None,
     faqpage_extern: Optional[str] = None,
+    betriebstyp: str = "unterkunft",
 ) -> SchemaResult:
     """
     Wertet HTML-Text aus. Wird sowohl von check_schema() nach dem Fetch als auch
@@ -412,6 +482,11 @@ def evaluate_html(
     gehört laut Google-Richtlinie auf die FAQ-Seite selbst, nicht auf die
     Startseite — die frühere Nur-Startseiten-Prüfung hat korrekt
     ausgezeichnete Websites fälschlich mit 'keine FAQPage' bemängelt).
+
+    betriebstyp: "unterkunft" (Default, unverändertes Verhalten) oder
+    "ausflugsziel" — siehe ATTRAKTION_TYPES. Ausflugsziele (Museen,
+    Schluchten, Bäder) sind keine Unterkünfte und können strukturell nie
+    GRÜN erreichen, wenn sie gegen LODGING_TYPES geprüft werden.
     """
     result = SchemaResult(domain=domain, fetched_url=fetched_url, fetched_status=http_status)
 
@@ -457,38 +532,47 @@ def evaluate_html(
                 seen_types.append(t)
     result.all_types = seen_types
 
-    # Lodging-Entität suchen
-    lodging_entities = [e for e in parsed_entities if _is_lodging(e)]
+    # Kern-Entität suchen (Lodging bei "unterkunft", Attraktion bei "ausflugsziel")
+    kern_entities = [e for e in parsed_entities if _ist_relevante_entitaet(e, betriebstyp)]
     result.has_faqpage = any("FAQPage" in _type_of(e) for e in parsed_entities)
     if not result.has_faqpage and faqpage_extern:
         result.has_faqpage = True
         result.faqpage_quelle = faqpage_extern
 
-    if not lodging_entities:
+    if not kern_entities:
         result.overall_status = "ROT"
         # Wir zeigen die tatsächlich gefundenen Typen — Grundregel 2 (Belege).
         types_str = ", ".join(seen_types) if seen_types else "(keine)"
-        result.reason = (
-            f"keine Lodging-Entität (Hotel/Resort/BedAndBreakfast/Hostel/"
-            f"LodgingBusiness/Apartment/VacationRental). Gefunden: {types_str}"
-        )
+        if betriebstyp == "ausflugsziel":
+            result.reason = (
+                "keine erkennbare Attraktions-/Betriebs-Entität (TouristAttraction/"
+                f"Museum/Park/Zoo/Aquarium/AmusementPark/CivicStructure/EventVenue/"
+                f"SportsActivityLocation/LocalBusiness). Gefunden: {types_str}"
+            )
+        else:
+            result.reason = (
+                f"keine Lodging-Entität (Hotel/Resort/BedAndBreakfast/Hostel/"
+                f"LodgingBusiness/Apartment/VacationRental). Gefunden: {types_str}"
+            )
         return result
 
-    # "Beste" Lodging-Entität wählen (die mit den meisten Kernfeldern).
+    # "Beste" Entität wählen (die mit den meisten Kernfeldern).
     def _score(e: dict) -> int:
         return sum(1 for f in CORE_FIELDS if e.get(f))
-    lodging = max(lodging_entities, key=_score)
-    lodging_types = _type_of(lodging)
-    lodging_type_name = next(
-        (t for t in lodging_types if t in LODGING_TYPES),
-        lodging_types[0] if lodging_types else "?",
+    kern = max(kern_entities, key=_score)
+    kern_types = _type_of(kern)
+    relevante_typen = _relevante_typen(betriebstyp)
+    kern_type_name = next(
+        (t for t in kern_types if t in relevante_typen),
+        kern_types[0] if kern_types else "?",
     )
+    entitaet_label = "Attraktions-Entität" if betriebstyp == "ausflugsziel" else "Lodging-Entität"
 
-    core_checks, empf_checks = _run_field_checks(lodging)
-    has_sa, sa_count, sa_evidence = _check_sameAs(lodging)
+    core_checks, empf_checks = _run_field_checks(kern)
+    has_sa, sa_count, sa_evidence = _check_sameAs(kern)
     result.lodging = LodgingCheck(
-        type_name=lodging_type_name,
-        all_types=lodging_types,
+        type_name=kern_type_name,
+        all_types=kern_types,
         fields=core_checks,
         empfohlen=empf_checks,
         has_sameAs=has_sa,
@@ -506,7 +590,7 @@ def evaluate_html(
     if not missing_core and result.has_faqpage and has_sa:
         result.overall_status = "GRÜN"
         result.reason = (
-            f"vollständige Lodging-Entität ({lodging_type_name}) + FAQPage + sameAs"
+            f"vollständige {entitaet_label} ({kern_type_name}) + FAQPage + sameAs"
             + quelle_hinweis
         )
     else:
@@ -519,7 +603,7 @@ def evaluate_html(
             gaps.append("kein sameAs")
         result.overall_status = "GELB"
         result.reason = (
-            f"Lodging-Entität ({lodging_type_name}) vorhanden, aber unvollständig — "
+            f"{entitaet_label} ({kern_type_name}) vorhanden, aber unvollständig — "
             + "; ".join(gaps)
             + quelle_hinweis
         )
@@ -655,8 +739,18 @@ def check_schema(
     domain: str,
     user_agent: str = DEFAULT_USER_AGENT,
     timeout: int = DEFAULT_TIMEOUT,
+    betriebstyp: str = "unterkunft",
 ) -> SchemaResult:
-    """Prüft eine Domain auf Schema.org-JSON-LD. Interpretiert nichts — nur Fakten."""
+    """
+    Prüft eine Domain auf Schema.org-JSON-LD. Interpretiert nichts — nur Fakten.
+
+    betriebstyp: "unterkunft" (Default) oder "ausflugsziel" — siehe
+    ATTRAKTION_TYPES in evaluate_html(). Unbekannte Werte fallen sicher auf
+    "unterkunft" zurück (bestehendes Verhalten bleibt unverändert).
+    """
+    if betriebstyp not in BETRIEBSTYPEN:
+        betriebstyp = "unterkunft"
+
     dom = domain.strip()
     if dom.startswith("https://"):
         dom = dom[8:]
@@ -664,20 +758,20 @@ def check_schema(
         dom = dom[7:]
     dom = dom.strip("/")
 
-    final_url, html, status = _fetch_html(dom, user_agent=user_agent, timeout=timeout)
+    final_url, html, status, diagnose = _fetch_html(dom, user_agent=user_agent, timeout=timeout)
 
     if final_url is None:
         result = SchemaResult(domain=dom, fetched_status=status)
-        result.fetch_error = (
-            "Startseite nicht abrufbar (Timeout/DNS/Connection-Fehler"
-            + (f", letzter Status {status}" if status else "")
-            + ")"
-        )
+        if diagnose:
+            result.fetch_error = f"Startseite nicht abrufbar — {diagnose}"
+            result.reason = f"HTML konnte nicht geladen werden — {diagnose}"
+        else:
+            result.fetch_error = "Startseite nicht abrufbar (kein Detail ermittelt)"
+            result.reason = "HTML konnte nicht geladen werden"
         result.overall_status = "UNBEKANNT"
-        result.reason = "HTML konnte nicht geladen werden"
         return result
 
-    result = evaluate_html(html or "", status or 200, dom, final_url)
+    result = evaluate_html(html or "", status or 200, dom, final_url, betriebstyp=betriebstyp)
 
     # Glocknerhof-Fix: Startseite ohne FAQPage heißt noch nicht "keine
     # FAQPage" — das Markup gehört auf die FAQ-Unterseite. Nachprüfen,
@@ -690,7 +784,8 @@ def check_schema(
                 kandidaten, dom, user_agent, timeout)
             if quelle:
                 result = evaluate_html(html or "", status or 200, dom,
-                                       final_url, faqpage_extern=quelle)
+                                       final_url, faqpage_extern=quelle,
+                                       betriebstyp=betriebstyp)
             elif geprueft:
                 # Ehrlich präzisieren: nicht nur die Startseite wurde
                 # geprüft. Der Wortlaut "keine FAQPage" bleibt erhalten —
