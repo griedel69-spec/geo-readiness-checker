@@ -3,14 +3,31 @@ Gemeinsame GEO-Prüf-Logik — übernommen aus dem geo-radar-Repo.
 
 HERKUNFT (nicht hier weiterentwickeln!):
     Repo:   github.com/griedel69-spec/geo-radar (privat)
-    Stand:  Commit c6546a3839829776ccbfc3b24d384057e4ad1817 (21.07.2026)
-    Dateien: src/signal1_robots.py, src/signal2_schema.py, src/signal3_rendering.py
+    Stand:  Commit 56d2d4d8b1d189d754d76ea19e72553b3a831d1c (14.09.2026)
+    Dateien: src/signal1_robots.py, src/signal2_schema.py,
+             src/signal3_rendering.py, src/netz_diagnose.py
 
 Die Dateien sind unverändert kopiert (Vendoring), weil geo-radar privat ist
 und der Render-Build des Checkers ohne Deploy-Schlüssel nicht auf private
 Repos zugreifen kann. Änderungen an der Prüf-Logik gehören ins geo-radar-Repo;
-danach die drei Dateien hierher nachkopieren und den Commit-Stand oben
+danach die Dateien hierher nachkopieren und den Commit-Stand oben
 aktualisieren.
+
+netz_diagnose.py wird seit diesem Stand mitkopiert, weil die drei Signal-
+Module es importieren (klartextliche Fehlerdiagnose bei UNBEKANNT). Es hängt
+nur an `requests` (im Checker ohnehin vorhanden) und braucht keine weitere
+Abhängigkeit.
+
+Ergebnis-relevante Änderungen seit dem vorigen Stand (c6546a3, 21.07.2026):
+  - Signal 2 erkennt zusätzlich die Lodging-Typen Campground und Motel
+    (ein Campingplatz/Motel mit korrektem Schema-Datensatz bekam vorher
+    fälschlich ROT statt GRÜN).
+  - Signal 3 normalisiert &nbsp;-Varianten vor der Adress-/Telefon-Erkennung
+    (eine mit &nbsp; verbundene PLZ+Ort-Adresse galt vorher fälschlich als
+    "Adresse fehlt" → GELB statt GRÜN).
+  - Signal 2 kann optional gegen Ausflugsziel-Typen prüfen (betriebstyp=
+    "ausflugsziel"); der Checker nutzt das nicht (Default "unterkunft"),
+    das Verhalten bleibt für ihn unverändert.
 
 Ampel-Konvention (aus geo-radar CLAUDE.md):
     GRÜN / GELB / ROT / UNBEKANNT — "Null Halluzination: UNBEKANNT statt raten".

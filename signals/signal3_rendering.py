@@ -25,10 +25,17 @@ import os
 import re
 import sys
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Optional
 
 import requests
 from bs4 import BeautifulSoup, Comment
+
+# Damit `from netz_diagnose import ...` funktioniert, egal von wo aufgerufen.
+_HERE = Path(__file__).parent
+if str(_HERE) not in sys.path:
+    sys.path.insert(0, str(_HERE))
+from netz_diagnose import klassifiziere_exception, klassifiziere_http_status  # noqa: E402
 
 
 # -----------------------------------------------------------------------------
@@ -137,24 +144,31 @@ def _fetch_html(
     domain: str,
     user_agent: str = DEFAULT_USER_AGENT,
     timeout: int = DEFAULT_TIMEOUT,
-) -> tuple[str, str, int] | tuple[None, None, Optional[int]]:
-    """Holt die Startseite. Rückgabe wie in Signal 2."""
+) -> tuple[str, str, int, str] | tuple[None, None, Optional[int], str]:
+    """
+    Holt die Startseite. Rückgabe wie in Signal 2, plus vierte Stelle mit dem
+    tatsächlich beobachteten Fehlgrund je Verbindungsversuch (siehe
+    netz_diagnose.py) — leer bei Erfolg.
+    """
     headers = {
         "User-Agent": user_agent,
         "Accept": "text/html,application/xhtml+xml,*/*;q=0.8",
         "Accept-Language": "de-AT,de;q=0.9,en;q=0.7",
     }
     last_status = None
+    versuche: list[str] = []
     for scheme in ("https", "http"):
         url = f"{scheme}://{domain}/"
         try:
             r = requests.get(url, headers=headers, timeout=timeout, allow_redirects=True)
             last_status = r.status_code
             if 200 <= r.status_code < 300:
-                return r.url, r.text, r.status_code
-        except requests.RequestException:
+                return r.url, r.text, r.status_code, ""
+            versuche.append(f"{scheme}: {klassifiziere_http_status(r.status_code, r.headers)}")
+        except requests.RequestException as exc:
+            versuche.append(f"{scheme}: {klassifiziere_exception(exc)}")
             continue
-    return None, None, last_status
+    return None, None, last_status, " | ".join(versuche)
 
 
 # -----------------------------------------------------------------------------
@@ -184,8 +198,28 @@ def _detect_framework_markers(html: str) -> list[str]:
     return found
 
 
+def _normalize_html_whitespace(html: str) -> str:
+    """
+    Ersetzt non-breaking-space-Varianten durch ein normales Leerzeichen, BEVOR
+    die Adress-/Telefon-Regex laeuft. Ohne das matcht z. B. "9822&nbsp;Mallnitz"
+    nicht gegen `\\s+` (das Entity ist im rohen HTML noch nicht dekodiert) —
+    ein PLZ+Ort-Muster mit &nbsp; (sehr uebliches Pattern, u. a. damit Editoren
+    PLZ und Ort nicht getrennt umbrechen) wuerde faelschlich als "keine Adresse"
+    gewertet, obwohl sie im Text steht.
+    """
+    return (
+        html.replace("&nbsp;", " ")
+        .replace("&NBSP;", " ")
+        .replace("&#160;", " ")
+        .replace("&#xA0;", " ")
+        .replace("&#xa0;", " ")
+        .replace("\xa0", " ")
+    )
+
+
 def _find_phone(html: str) -> tuple[bool, str]:
     """Sucht ein Telefon-Muster im rohen HTML."""
+    html = _normalize_html_whitespace(html)
     m = PHONE_INTERNATIONAL.search(html)
     if m:
         return True, m.group(0).strip()
@@ -201,6 +235,7 @@ def _find_address(html: str) -> tuple[bool, str]:
     1. Straßenname + Hausnummer (z. B. 'Bergstraße 12')
     2. PLZ + Ort (z. B. '6370 Kitzbühel')
     """
+    html = _normalize_html_whitespace(html)
     m = ADDRESS_STREET.search(html)
     if m:
         return True, m.group(0).strip()
@@ -325,17 +360,17 @@ def check_rendering(
         dom = dom[7:]
     dom = dom.strip("/")
 
-    final_url, html, status = _fetch_html(dom, user_agent=user_agent, timeout=timeout)
+    final_url, html, status, diagnose = _fetch_html(dom, user_agent=user_agent, timeout=timeout)
 
     if final_url is None:
         result = RenderingResult(domain=dom, fetched_status=status)
-        result.fetch_error = (
-            "Startseite nicht abrufbar (Timeout/DNS/Connection-Fehler"
-            + (f", letzter Status {status}" if status else "")
-            + ")"
-        )
+        if diagnose:
+            result.fetch_error = f"Startseite nicht abrufbar — {diagnose}"
+            result.reason = f"HTML konnte nicht geladen werden — {diagnose}"
+        else:
+            result.fetch_error = "Startseite nicht abrufbar (kein Detail ermittelt)"
+            result.reason = "HTML konnte nicht geladen werden"
         result.overall_status = "UNBEKANNT"
-        result.reason = "HTML konnte nicht geladen werden"
         return result
 
     return evaluate_html(html or "", status or 200, dom, final_url)
