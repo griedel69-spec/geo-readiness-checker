@@ -12,7 +12,7 @@ from sheets import SHEET_ID, get_sheet, schreibe_lead
 
 # Gemeinsame Prüf-Logik (Signale 1-3, übernommen aus geo-radar — siehe signals/__init__.py)
 from signals import check_robots, check_schema, check_rendering
-from befund import baue_befund, signal_kurzzeile, AMPEL_FARBEN, AMPEL_SYMBOL, schema_betriebstyp
+from befund import baue_befund, signal_kurzzeile, AMPEL_FARBEN, AMPEL_SYMBOL, schema_betriebstyp, BETRIEBSTYP_OPTIONEN
 from befund_pdf import erzeuge_kurzbefund_pdf
 from mailer import sende_kurzbefund, smtp_status, sende_testmail
 
@@ -464,12 +464,7 @@ if not st.session_state["analyse_done"]:
         ort     = st.text_input("Ort / Destination *",  placeholder="z.B. St. Anton am Arlberg")
     with col2:
         website = st.text_input("Website-URL *", placeholder="https://www.hotel-alpenstern.at")
-        typ     = st.selectbox("Betriebstyp *", [
-            "Hotel (3–4 Sterne)", "Hotel (5 Sterne / Luxus)",
-            "Pension / Gasthof", "Ferienwohnung / Appartement",
-            "Ferienhaus / Chalet", "Boutique Hotel",
-            "Wellnesshotel", "Tourismusverband / DMO", "Sonstiges"
-        ])
+        typ     = st.selectbox("Betriebstyp *", list(BETRIEBSTYP_OPTIONEN))
 
     email = st.text_input(
         "Ihre E-Mail-Adresse * (für weiterführende Tipps)",
