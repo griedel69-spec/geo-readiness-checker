@@ -169,6 +169,59 @@ def _sende(secrets, msg: EmailMessage) -> None:
             s.send_message(msg)
 
 
+def sende_update_zweite_messung(lead: dict, befund: dict, pdf_bytes: bytes,
+                                secrets=None) -> tuple[bool, str]:
+    """
+    „2. Messung / Update"-Mail NUR an den Betrieb (kein Gernot-Ping, da im
+    Batch verschickt). Anderer Betreff + Text als der Erstbefund; dasselbe
+    Kurz-Befund-PDF im Anhang (mit dem jetzt korrigierten Ampel-Ergebnis).
+
+    Der Text ist für das ROT->GELB-Ergebnis formuliert („steht jetzt auf
+    GELB"). Der Aufrufer (zweite_messung.py) ruft diese Funktion deshalb nur
+    auf, wenn die Neumessung tatsächlich GELB ergibt — sonst wäre die Aussage
+    unwahr (Faktentreue).
+
+    Rückgabe: (ok, fehlertext).
+    """
+    if not transport(secrets):
+        return False, ("Versand nicht konfiguriert — es fehlt entweder "
+                       "BREVO_API_KEY (+ MAIL_FROM) oder SMTP_HOST/SMTP_USER/SMTP_PASS")
+
+    betrieb = lead.get("betrieb", "Ihr Betrieb")
+    dateiname = f"GEO-Kurz-Befund_{betrieb.replace(' ', '_')}.pdf"
+    betreff = f"Ihr GEO-Check für {betrieb}: aktualisiertes Ergebnis (2. Messung)"
+    text = (
+        f"Guten Tag,\n\n"
+        f"vor Kurzem haben Sie von mir einen kostenlosen GEO-Readiness-Kurzbefund "
+        f"für {betrieb} erhalten — die Analyse, wie gut Ihr Betrieb für KI-"
+        f"Suchsysteme wie ChatGPT, Perplexity und Google AI sichtbar ist. "
+        f"Damals stand Ihre GEO-Ampel auf ROT.\n\n"
+        f"Ich habe meine Bewertungsmethodik inzwischen geschärft: Die "
+        f"Prüfkriterien werden jetzt nach ihrer tatsächlichen Wirkung auf die "
+        f"KI-Sichtbarkeit gewichtet. Eine Neumessung Ihrer Website zeigt:\n\n"
+        f"{betrieb} steht jetzt auf GELB. 🟡\n\n"
+        f"Der Grund für die bessere Einstufung: Ihre Website ist für KI-Systeme "
+        f"grundsätzlich zugänglich und lesbar — Zugang (robots.txt) und "
+        f"Maschinenlesbarkeit sind in Ordnung. Was noch fehlt, sind "
+        f"strukturierte Betriebsdaten (Schema.org). Das ist kein Blocker mehr, "
+        f"sondern Ihr letzter Hebel Richtung GRÜN.\n\n"
+        f"Ihren aktualisierten Kurz-Befund als PDF finden Sie im Anhang dieser "
+        f"E-Mail.\n\n"
+        f"Wenn Sie den Schritt auf Grün gehen möchten, unterstütze ich Sie gerne "
+        f"dabei — eine kurze Antwort auf diese Mail genügt.\n\n"
+        f"Herzliche Grüße\n"
+        f"Gernot Riedel\n"
+        f"Gernot Riedel Tourism Consulting · TÜV-zertifizierter KI-Trainer\n"
+        f"kontakt@gernot-riedel.com · +43 676 7237811 · gernot-riedel.com\n"
+    )
+    try:
+        _versende(secrets, lead.get("email", ""), betreff, text,
+                  [(dateiname, pdf_bytes)])
+    except Exception as e:
+        return False, f"Versand an Betrieb fehlgeschlagen: {e}"
+    return True, ""
+
+
 def sende_kurzbefund(lead: dict, befund: dict, pdf_bytes: bytes,
                      secrets=None) -> tuple[bool, str]:
     """
