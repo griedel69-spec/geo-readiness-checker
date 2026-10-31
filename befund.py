@@ -45,7 +45,8 @@ _EMPFEHLUNGEN = {
                          "Webentwickler prüfen lassen, ob ein Bot-Blocker aktiv ist.",
     ("s2", "ROT"): "Lassen Sie eine Schema.org-Auszeichnung als Beherbergungsbetrieb "
                    "(z. B. Hotel, BedAndBreakfast) mit Name, Adresse, Telefon und Website "
-                   "einbauen — erst damit kann eine KI Ihre Fakten sicher zuordnen.",
+                   "einbauen — der größte Ausbau-Hebel: Basis für Google Rich Results, "
+                   "Voice und Knowledge Graph und ein sauberes Fundament für KI-Systeme.",
     ("s2", "GELB"): "Ihre Schema.org-Daten sind vorhanden, aber unvollständig — "
                     "fehlende Kernfelder (z. B. Adresse, Telefon, Bild) ergänzen lassen.",
     ("s2", "UNBEKANNT"): "Die strukturierten Daten Ihrer Seite konnten nicht geprüft "
