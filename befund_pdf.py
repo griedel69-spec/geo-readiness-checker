@@ -139,8 +139,8 @@ def erzeuge_kurzbefund_pdf(lead: dict, befund: dict) -> bytes:
         vb = Table([[Paragraph(
             '<font color="#c9a84c"><b>Unser Angebot: GEO-Optimierungspaket Professional — € 149</b></font><br/>'
             '<font color="white">Wir setzen die oben genannten Punkte in 8 fertige Bausteine um — '
-            'inklusive dem strukturierten Datensatz (digitaler Steckbrief), der das ROT-Ergebnis '
-            '"Strukturierte Betriebsdaten" behebt: Schema-Steckbrief, FAQ, Startseiten-Überschrift, '
+            'inklusive dem strukturierten Datensatz (digitaler Steckbrief), der Ihre '
+            '"Strukturierten Betriebsdaten" von GELB auf GRÜN hebt: Schema-Steckbrief, FAQ, Startseiten-Überschrift, '
             'USP-Box, lokale Keywords, Google-Business-Text, Meta-Descriptions und ein neuer '
             '"Über uns"-Text — geliefert innerhalb von 24 Stunden. '
             'Antworten Sie einfach auf diese E-Mail.</font>',

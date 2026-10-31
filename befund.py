@@ -85,10 +85,7 @@ _EMPFEHLUNGEN = {
                     "sind gesperrt. Das wirkt langsam, aber dauerhaft auf Ihre Sichtbarkeit.",
     ("s1", "UNBEKANNT"): "Die robots.txt Ihrer Website war nicht abrufbar — bitte vom "
                          "Webentwickler prüfen lassen, ob ein Bot-Blocker aktiv ist.",
-    ("s2", "ROT"): "Lassen Sie eine Schema.org-Auszeichnung als Beherbergungsbetrieb "
-                   "(z. B. Hotel, BedAndBreakfast) mit Name, Adresse, Telefon und Website "
-                   "einbauen — der größte Ausbau-Hebel: Basis für Google Rich Results, "
-                   "Voice und Knowledge Graph und ein sauberes Fundament für KI-Systeme.",
+    # ("s2", "ROT") ist betriebstyp-abhängig — siehe _S2_ROT_EMPFEHLUNG unten.
     ("s2", "GELB"): "Ihre Schema.org-Daten sind vorhanden, aber unvollständig — "
                     "fehlende Kernfelder (z. B. Adresse, Telefon, Bild) ergänzen lassen.",
     ("s2", "UNBEKANNT"): "Die strukturierten Daten Ihrer Seite konnten nicht geprüft "
@@ -101,11 +98,33 @@ _EMPFEHLUNGEN = {
                          "Erreichbarkeit und Bot-Freigaben prüfen lassen.",
 }
 
+# Die Signal-2-ROT-Empfehlung hängt vom Betriebstyp ab: einem Hotel wird eine
+# Lodging-Auszeichnung empfohlen, einem Ausflugsziel/TVB eine Attraktions-/
+# Betriebs-Auszeichnung. Sonst stünde im Befund ein für den Betrieb falscher
+# Vorschlag ("als Beherbergungsbetrieb" für einen Wanderweg). Beide Varianten
+# rahmen Schema bewusst als größten Ausbau-Hebel (GELB -> GRÜN), nicht als
+# ROT-Fix — Signal 2 löst seit der signalbewussten Ampel kein ROT mehr aus.
+_S2_ROT_EMPFEHLUNG = {
+    "unterkunft": "Lassen Sie eine Schema.org-Auszeichnung als Beherbergungsbetrieb "
+                  "(z. B. Hotel, BedAndBreakfast) mit Name, Adresse, Telefon und Website "
+                  "einbauen — der größte Ausbau-Hebel: Basis für Google Rich Results, "
+                  "Voice und Knowledge Graph und ein sauberes Fundament für KI-Systeme.",
+    "ausflugsziel": "Lassen Sie eine Schema.org-Auszeichnung passend zur Betriebsart "
+                    "(z. B. TouristAttraction, Museum oder LocalBusiness) mit Name, Adresse, "
+                    "Telefon und Website einbauen — der größte Ausbau-Hebel: Basis für Google "
+                    "Rich Results, Voice und Knowledge Graph und ein sauberes Fundament für "
+                    "KI-Systeme.",
+}
 
-def baue_befund(s1, s2, s3) -> dict:
+
+def baue_befund(s1, s2, s3, betriebstyp: str = "unterkunft") -> dict:
     """
     Nimmt RobotsResult, SchemaResult, RenderingResult und liefert ein
     einheitliches Befund-Dict für Anzeige, PDF und Mail.
+
+    betriebstyp ("unterkunft"|"ausflugsziel") steuert nur die Formulierung der
+    Signal-2-ROT-Empfehlung (Lodging- vs. Attraktions-Auszeichnung); er wird
+    über befund.schema_betriebstyp() aus dem Formular-Typ abgeleitet.
     """
     signale = []
     for key, res in (("s1", s1), ("s2", s2), ("s3", s3)):
@@ -120,7 +139,10 @@ def baue_befund(s1, s2, s3) -> dict:
 
     empfehlungen = []
     for s in signale:
-        e = _EMPFEHLUNGEN.get((s["key"], s["status"]))
+        if s["key"] == "s2" and s["status"] == "ROT":
+            e = _S2_ROT_EMPFEHLUNG.get(betriebstyp, _S2_ROT_EMPFEHLUNG["unterkunft"])
+        else:
+            e = _EMPFEHLUNGEN.get((s["key"], s["status"]))
         if e:
             empfehlungen.append(e)
 
