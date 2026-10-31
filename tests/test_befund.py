@@ -7,8 +7,20 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from itertools import product                              # noqa: E402
 
-from befund import baue_befund, signal_kurzzeile          # noqa: E402
+from befund import baue_befund, signal_kurzzeile, schema_betriebstyp  # noqa: E402
 from signals import compute_overall                        # noqa: E402
+
+
+# ── schema_betriebstyp: Formular-Typ -> geo-radar-Prüftyp (Signal 2) ──
+
+def test_schema_betriebstyp_unterkunft_default():
+    for t in ("Hotel (3–4 Sterne)", "Pension / Gasthof",
+              "Ferienwohnung / Appartement", "Wellnesshotel", ""):
+        assert schema_betriebstyp(t) == "unterkunft"
+
+def test_schema_betriebstyp_nicht_unterkunft_wird_ausflugsziel():
+    assert schema_betriebstyp("Tourismusverband / DMO") == "ausflugsziel"
+    assert schema_betriebstyp("Sonstiges") == "ausflugsziel"
 
 
 def _res(status, reason="Testgrund"):
