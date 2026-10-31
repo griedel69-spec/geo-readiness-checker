@@ -23,6 +23,24 @@ SIGNAL_NAMEN = {
     "s3": "Maschinenlesbarkeit der Startseite",
 }
 
+# Betriebstyp-Auswahl im Formular -> geo-radar-Schema-Prüftyp für Signal 2.
+# geo-radar kennt zwei Prüftypen: "unterkunft" (erwartet eine Lodging-Entität,
+# Hotel/BedAndBreakfast/…) und "ausflugsziel" (erwartet TouristAttraction,
+# Museum, LocalBusiness, …). Nicht-Beherbergungen (Tourismusverband/DMO oder
+# „Sonstiges" wie ein Weg/Verein, z. B. der Johannesweg) würden gegen die
+# Lodging-Liste geprüft sonst immer „keine Lodging-Entität" (Signal 2 ROT)
+# melden — auch mit korrektem, nur anderstypigem Markup. Für die Gesamt-Ampel
+# ist das seit der signalbewussten Regel ohnehin egal (Signal 2 ist kein
+# Blocker), aber der Signal-2-Beleg wird damit für diese Betriebe ehrlich.
+_NICHT_UNTERKUNFT_TYPEN = {"Tourismusverband / DMO", "Sonstiges"}
+
+
+def schema_betriebstyp(display_typ: str) -> str:
+    """Formular-Betriebstyp -> geo-radar-Prüftyp ("unterkunft"|"ausflugsziel")."""
+    if (display_typ or "").strip() in _NICHT_UNTERKUNFT_TYPEN:
+        return "ausflugsziel"
+    return "unterkunft"
+
 GESAMT_KLARTEXT = {
     "GRÜN": "Ihr Betrieb ist für KI-Systeme technisch gut auffindbar. "
             "Jetzt lohnt der Feinschliff bei den Inhalten.",
@@ -45,7 +63,8 @@ _EMPFEHLUNGEN = {
                          "Webentwickler prüfen lassen, ob ein Bot-Blocker aktiv ist.",
     ("s2", "ROT"): "Lassen Sie eine Schema.org-Auszeichnung als Beherbergungsbetrieb "
                    "(z. B. Hotel, BedAndBreakfast) mit Name, Adresse, Telefon und Website "
-                   "einbauen — erst damit kann eine KI Ihre Fakten sicher zuordnen.",
+                   "einbauen — der größte Ausbau-Hebel: Basis für Google Rich Results, "
+                   "Voice und Knowledge Graph und ein sauberes Fundament für KI-Systeme.",
     ("s2", "GELB"): "Ihre Schema.org-Daten sind vorhanden, aber unvollständig — "
                     "fehlende Kernfelder (z. B. Adresse, Telefon, Bild) ergänzen lassen.",
     ("s2", "UNBEKANNT"): "Die strukturierten Daten Ihrer Seite konnten nicht geprüft "

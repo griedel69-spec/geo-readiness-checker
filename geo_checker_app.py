@@ -12,7 +12,7 @@ from sheets import SHEET_ID, get_sheet, schreibe_lead
 
 # Gemeinsame Prüf-Logik (Signale 1-3, übernommen aus geo-radar — siehe signals/__init__.py)
 from signals import check_robots, check_schema, check_rendering
-from befund import baue_befund, signal_kurzzeile, AMPEL_FARBEN, AMPEL_SYMBOL
+from befund import baue_befund, signal_kurzzeile, AMPEL_FARBEN, AMPEL_SYMBOL, schema_betriebstyp
 from befund_pdf import erzeuge_kurzbefund_pdf
 from mailer import sende_kurzbefund, smtp_status, sende_testmail
 
@@ -497,7 +497,7 @@ if not st.session_state["analyse_done"]:
             status.info("🔍 Signal 1/3: KI-Zugang (robots.txt) wird geprüft…")
             s1 = check_robots(domain)
             status.info("🔍 Signal 2/3: Strukturierte Betriebsdaten (Schema.org)…")
-            s2 = check_schema(domain)
+            s2 = check_schema(domain, betriebstyp=schema_betriebstyp(typ))
             status.info("🔍 Signal 3/3: Maschinenlesbarkeit der Startseite…")
             s3 = check_rendering(domain)
             befund = baue_befund(s1, s2, s3)
