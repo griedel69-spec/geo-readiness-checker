@@ -16,7 +16,7 @@ Automatisierte GEO-Sichtbarkeitsprüfung (Ampel) + optionales Optimierungspaket 
 ### GEO-Optimierungspaket Professional — € 149 (einmalig)
 Das kostenpflichtige Kernprodukt. **8 fertige Bausteine** für einen Betrieb:
 
-1. **Strukturierter Datensatz (digitaler Steckbrief)** — Schema.org/JSON-LD-Auszeichnung als Beherbergungsbetrieb (Hotel/BedAndBreakfast/…). Behebt das häufigste ROT-Ergebnis des kostenlosen Checks ("Strukturierte Betriebsdaten").
+1. **Strukturierter Datensatz (digitaler Steckbrief)** — Schema.org/JSON-LD-Auszeichnung als Beherbergungsbetrieb (Hotel/BedAndBreakfast/…). Größter GELB-Hebel: bringt die "Strukturierten Betriebsdaten" von fehlend/unvollständig auf vollständig (Signal 2 löst seit der signalbewussten Ampel kein ROT mehr aus — siehe Gesamt-Ampel-Regel unten).
 2. **FAQ-Sektion** — 10 Fragen & Antworten, KI-optimiert
 3. **H1-Titel + Subheadline** — Startseite neu
 4. **USP-Box** — 4 Alleinstellungsmerkmale
@@ -49,12 +49,12 @@ Verwandtes, aber **separates** Produkt: destinationsweites Screening für TVBs/D
 - **Frühere Streamlit-Cloud-Instanz der Haupt-App wurde gelöscht.** `nap_checker_app.py` (separater NAP-Konsistenz-Checker, eigenständiges Tool) läuft weiterhin bewusst auf Streamlit Cloud — **diese Datei nicht löschen**, sie ist die Live-Quelle dieser anderen App.
 
 ### Ablauf
-1. Formular: Betriebsname, Ort, Website-URL, Betriebstyp, E-Mail
+1. Formular: Betriebsname, Ort, Website-URL, Betriebstyp, E-Mail. Der **Betriebstyp** steuert, gegen welche Schema.org-Entität Signal 2 prüft (siehe unten): die sieben Beherbergungs-Optionen → geo-radar-Prüftyp `unterkunft` (Lodging-Entität erwartet); **"Ausflugsziel / Sehenswürdigkeit"**, "Tourismusverband / DMO" und "Sonstiges" → `ausflugsziel` (TouristAttraction/Museum/LocalBusiness … erwartet). Die Auswahl-Liste ist zentral in `befund.BETRIEBSTYP_OPTIONEN` gepflegt (einzige Quelle, aus der das Formular gebaut wird), das Mapping in `befund.schema_betriebstyp()`.
 2. **Signale 1–3** aus dem geo-radar-Repo prüfen die Website (kein KI-Aufruf, reine HTTP/Parsing-Checks, daher kostenlos):
    - **Signal 1** — KI-Zugang (robots.txt, Bot-Klassen A/B)
-   - **Signal 2** — Strukturierte Betriebsdaten (Schema.org/JSON-LD, Lodging-Entität)
+   - **Signal 2** — Strukturierte Betriebsdaten (Schema.org/JSON-LD). Erwartete Kern-Entität je Betriebstyp: Lodging (Hotel/BedAndBreakfast/…) bei `unterkunft`, Attraktion (TouristAttraction/Museum/LocalBusiness/…) bei `ausflugsziel` — so bekommt z. B. ein Weg/Ausflugsziel einen ehrlichen Beleg statt fälschlich "keine Lodging-Entität".
    - **Signal 3** — Maschinenlesbarkeit der Startseite (Adresse/Telefon im Roh-HTML, SPA-Erkennung)
-3. **Gesamt-Ampel** aus den drei Signalen (`signals/__init__.py::compute_overall`): ein ROT → ROT; sonst GELB wenn GELB/UNBEKANNT dabei; GRÜN nur wenn alle drei GRÜN. "Null Halluzination" — was nicht messbar ist, wird ehrlich als UNBEKANNT ausgewiesen, nie geraten.
+3. **Gesamt-Ampel** aus den Signalen (`signals/__init__.py::compute_overall` → `berechne_gesamtampel`): **signalbewusst, kein unmarkiertes Worst-of** (deckungsgleich mit geo-radar `scanner.gesamt_ampel`/`build_report.berechne_gesamtampel`). ROT nur bei einem echten Blocker — Signal 1 ROT (KI-Zugang gesperrt) oder Signal 3 ROT (Inhalte für Crawler unsichtbar); im Tiefenaudit zusätzlich Signal 4/5. **Signal 2 (strukturierte Daten) löst NIE allein ROT aus** (Basishygiene, kein belegter KI-Sichtbarkeitshebel), zählt höchstens GELB. GRÜN nur, wenn alle erhobenen Signale GRÜN; alle UNBEKANNT → UNBEKANNT; sonst GELB. "Null Halluzination" — was nicht messbar ist, wird ehrlich als UNBEKANNT ausgewiesen, nie geraten.
 4. Zusätzlich **14 ergänzende technische Checkpunkte** (HTTPS, Ladezeit, Viewport, Sitemap, Canonical, interne Links, Meta-Description, Title, H1, Alt-Texte, Open Graph, lang/hreflang …) — eigener Regex-Code in `geo_checker_app.py`, in der UI zugeklappt unter "Technische Details für Ihren Webentwickler".
 5. **Kurz-Befund-PDF** (eine Seite, `befund_pdf.py`/reportlab) wird automatisch erzeugt und **per E-Mail an den Betrieb verschickt** — bei GELB/ROT mit Verkaufs-Brücke zum € 149-Paket.
 6. **Benachrichtigung an Gernot bei jedem Versand** (nicht erst beim Kauf) — bei GELB/ROT als "💰 VERKAUFSCHANCE" markiert, PDF im Anhang.
