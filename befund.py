@@ -26,13 +26,37 @@ SIGNAL_NAMEN = {
 # Betriebstyp-Auswahl im Formular -> geo-radar-Schema-Prüftyp für Signal 2.
 # geo-radar kennt zwei Prüftypen: "unterkunft" (erwartet eine Lodging-Entität,
 # Hotel/BedAndBreakfast/…) und "ausflugsziel" (erwartet TouristAttraction,
-# Museum, LocalBusiness, …). Nicht-Beherbergungen (Tourismusverband/DMO oder
-# „Sonstiges" wie ein Weg/Verein, z. B. der Johannesweg) würden gegen die
-# Lodging-Liste geprüft sonst immer „keine Lodging-Entität" (Signal 2 ROT)
-# melden — auch mit korrektem, nur anderstypigem Markup. Für die Gesamt-Ampel
-# ist das seit der signalbewussten Regel ohnehin egal (Signal 2 ist kein
-# Blocker), aber der Signal-2-Beleg wird damit für diese Betriebe ehrlich.
-_NICHT_UNTERKUNFT_TYPEN = {"Tourismusverband / DMO", "Sonstiges"}
+# Museum, LocalBusiness, …). Nicht-Beherbergungen (Ausflugsziel/Sehenswürdig-
+# keit, Tourismusverband/DMO oder „Sonstiges" wie ein Weg/Verein, z. B. der
+# Johannesweg) würden gegen die Lodging-Liste geprüft sonst immer „keine
+# Lodging-Entität" (Signal 2 ROT) melden — auch mit korrektem, nur anderstypigem
+# Markup. Für die Gesamt-Ampel ist das seit der signalbewussten Regel ohnehin
+# egal (Signal 2 ist kein Blocker), aber der Signal-2-Beleg wird damit für
+# diese Betriebe ehrlich. "Sonstiges" fällt bewusst auf "ausflugsziel", weil
+# es explizit keine der sieben Beherbergungs-Optionen ist und die Attraktions-
+# Typenliste (inkl. LocalBusiness) die weitere, tolerantere ist.
+# Einzige Quelle für die Betriebstyp-Auswahl: geo_checker_app.py baut daraus
+# das Formular-Dropdown, schema_betriebstyp() liest dieselbe Liste. So können
+# Label-Text und Mapping nicht auseinanderlaufen (ein Tippfehler bräche sonst
+# still die Zuordnung) — abgesichert über test_befund.py.
+BETRIEBSTYP_OPTIONEN = (
+    "Hotel (3–4 Sterne)",
+    "Hotel (5 Sterne / Luxus)",
+    "Pension / Gasthof",
+    "Ferienwohnung / Appartement",
+    "Ferienhaus / Chalet",
+    "Boutique Hotel",
+    "Wellnesshotel",
+    "Tourismusverband / DMO",
+    "Ausflugsziel / Sehenswürdigkeit",
+    "Sonstiges",
+)
+
+_NICHT_UNTERKUNFT_TYPEN = {
+    "Ausflugsziel / Sehenswürdigkeit",
+    "Tourismusverband / DMO",
+    "Sonstiges",
+}
 
 
 def schema_betriebstyp(display_typ: str) -> str:

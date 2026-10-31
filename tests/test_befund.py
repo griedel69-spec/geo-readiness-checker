@@ -7,7 +7,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from itertools import product                              # noqa: E402
 
-from befund import baue_befund, signal_kurzzeile, schema_betriebstyp  # noqa: E402
+from befund import (                                        # noqa: E402
+    baue_befund, signal_kurzzeile, schema_betriebstyp,
+    BETRIEBSTYP_OPTIONEN, _NICHT_UNTERKUNFT_TYPEN,
+)
 from signals import compute_overall                        # noqa: E402
 
 
@@ -19,8 +22,20 @@ def test_schema_betriebstyp_unterkunft_default():
         assert schema_betriebstyp(t) == "unterkunft"
 
 def test_schema_betriebstyp_nicht_unterkunft_wird_ausflugsziel():
+    assert schema_betriebstyp("Ausflugsziel / Sehenswürdigkeit") == "ausflugsziel"
     assert schema_betriebstyp("Tourismusverband / DMO") == "ausflugsziel"
     assert schema_betriebstyp("Sonstiges") == "ausflugsziel"
+
+def test_jeder_nicht_unterkunft_typ_ist_eine_echte_formular_option():
+    # Schützt vor Label-Drift: jedes gemappte Label muss im Dropdown existieren,
+    # sonst griffe die Ausflugsziel-Zuordnung an einem Tippfehler vorbei.
+    for label in _NICHT_UNTERKUNFT_TYPEN:
+        assert label in BETRIEBSTYP_OPTIONEN
+
+def test_alle_formular_optionen_sauber_gemappt():
+    # Jede Option ergibt genau einen der beiden geo-radar-Prüftypen.
+    for label in BETRIEBSTYP_OPTIONEN:
+        assert schema_betriebstyp(label) in ("unterkunft", "ausflugsziel")
 
 
 def _res(status, reason="Testgrund"):
