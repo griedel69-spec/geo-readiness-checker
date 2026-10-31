@@ -1,0 +1,7 @@
+/* Secondary palette — ReviewRadar presentation decks ONLY (NotebookLM "Alpine Minimalism" format).
+   Do not mix with the main brand tokens above; scope to a wrapper e.g. .rr-theme{...} or the Slides templates. */
+:root{
+--rr-teal:#1a4a4a;
+--rr-sage:#7a9e7e;
+--rr-sand:#f5f0e8;
+}
