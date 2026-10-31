@@ -495,7 +495,7 @@ if not st.session_state["analyse_done"]:
             s2 = check_schema(domain, betriebstyp=schema_betriebstyp(typ))
             status.info("🔍 Signal 3/3: Maschinenlesbarkeit der Startseite…")
             s3 = check_rendering(domain)
-            befund = baue_befund(s1, s2, s3)
+            befund = baue_befund(s1, s2, s3, betriebstyp=schema_betriebstyp(typ))
 
             status.info("🔍 Ergänzende technische Checkpunkte…")
             facts  = check_website(website)
@@ -724,8 +724,8 @@ if st.session_state["analyse_done"] and st.session_state["result"]:
           <p>
             Das <strong>GEO-Optimierungspaket Professional (€ 149)</strong> setzt die oben
             genannten Maßnahmen in 8 fertige Bausteine um — inklusive dem strukturierten
-            Datensatz (digitaler Steckbrief), der genau das ROT-Ergebnis „Strukturierte
-            Betriebsdaten" behebt: Schema-Steckbrief, FAQ, Startseiten-Überschrift,
+            Datensatz (digitaler Steckbrief), der Ihre „Strukturierten Betriebsdaten" von
+            GELB auf GRÜN hebt: Schema-Steckbrief, FAQ, Startseiten-Überschrift,
             USP-Box, lokale Keywords, Google-Business-Text, Meta-Descriptions und ein neuer
             „Über uns"-Text — geliefert innerhalb von 24 Stunden, ohne technisches Vorwissen.
           </p>

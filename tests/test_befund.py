@@ -91,6 +91,19 @@ def test_befund_s2_mangel_ist_gelb_mit_verkaufsbruecke_und_empfehlung():
     assert len(b["empfehlungen"]) == 1
     assert "Schema.org" in b["empfehlungen"][0]
 
+def test_s2_rot_empfehlung_ist_typabhaengig():
+    # Unterkunft: Vorschlag spricht von Beherbergungsbetrieb (Hotel/B&B).
+    b_u = baue_befund(_res("GRÜN"), _res("ROT"), _res("GRÜN"), betriebstyp="unterkunft")
+    assert "Beherbergungsbetrieb" in b_u["empfehlungen"][0]
+    assert "TouristAttraction" not in b_u["empfehlungen"][0]
+    # Ausflugsziel: Vorschlag spricht von Attraktions-/Betriebs-Typen, nicht Hotel.
+    b_a = baue_befund(_res("GRÜN"), _res("ROT"), _res("GRÜN"), betriebstyp="ausflugsziel")
+    assert "TouristAttraction" in b_a["empfehlungen"][0]
+    assert "Beherbergungsbetrieb" not in b_a["empfehlungen"][0]
+    # Default bleibt unterkunft (keine Signatur-Überraschung für Altaufrufer).
+    b_d = baue_befund(_res("GRÜN"), _res("ROT"), _res("GRÜN"))
+    assert "Beherbergungsbetrieb" in b_d["empfehlungen"][0]
+
 def test_befund_haelt_signal_gruende_fest():
     b = baue_befund(_res("GELB", "Bots blockiert"), _res("GRÜN"), _res("GRÜN"))
     assert b["signale"][0]["grund"] == "Bots blockiert"
