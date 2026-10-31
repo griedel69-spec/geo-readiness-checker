@@ -15,6 +15,7 @@ from signals import check_robots, check_schema, check_rendering
 from befund import baue_befund, signal_kurzzeile, AMPEL_FARBEN, AMPEL_SYMBOL, schema_betriebstyp, BETRIEBSTYP_OPTIONEN
 from befund_pdf import erzeuge_kurzbefund_pdf
 from mailer import sende_kurzbefund, smtp_status, sende_testmail
+import zweite_messung
 
 # ─── PAGE CONFIG ───
 st.set_page_config(
@@ -810,6 +811,98 @@ with st.expander("🔒 Admin-Bereich"):
                 st.success(info)
             else:
                 st.error(info)
+
+        st.markdown("---")
+        st.markdown("**🔁 2. Messung / Update-Versand (ROT→GELB)**")
+        st.caption(
+            "Nur für Betriebe, die VOR dem Ampel-Fix einen ROT-Kurzbefund "
+            "erhalten haben. Pro Zeile ein Betrieb, Felder per Semikolon:"
+        )
+        st.code("Name; Ort; URL; Betriebstyp; E-Mail", language=None)
+        st.caption(
+            "Jeder Eintrag wird LIVE neu gemessen. Verschickt wird die "
+            "Update-Mail nur, wenn die Neumessung **GELB** ergibt — alles "
+            "andere wird übersprungen und unten gemeldet (keine unzutreffende "
+            "„jetzt GELB“-Mail). Der Erstcheck-Flow bleibt davon unberührt."
+        )
+        batch_text = st.text_area(
+            "Betriebsliste",
+            height=160,
+            placeholder="Landhotel Beispiel; Maria Alm; https://beispiel.at; Hotel (3–4 Sterne); info@beispiel.at",
+            key="zm_batch",
+        )
+        nur_pruefen = st.checkbox(
+            "Nur prüfen (Trockenlauf — misst neu, verschickt NICHTS)",
+            value=True, key="zm_dryrun",
+        )
+        if st.button("🔁 2. Messung verarbeiten", key="zm_run"):
+            if not batch_text.strip():
+                st.warning("Bitte mindestens einen Betrieb eingeben.")
+            else:
+                balken = st.progress(0.0)
+                lage = st.empty()
+
+                def _fortschritt(i, n, e):
+                    lage.info(f"Prüfe {i}/{n}: {e.betrieb} ({e.website}) …")
+                    balken.progress((i - 1) / n if n else 1.0)
+
+                erg = zweite_messung.verarbeite_batch(
+                    batch_text, st.secrets,
+                    nur_pruefen=nur_pruefen, fortschritt=_fortschritt,
+                )
+                balken.progress(1.0)
+                lage.empty()
+
+                # Echte Versände ins Lead-Register schreiben (2.-Messung-Markierung)
+                if not nur_pruefen:
+                    for r in erg.versendet + erg.fehler:
+                        vermerk = (zweite_messung.VERSAND_OK if r.status == "versendet"
+                                   else f"{zweite_messung.VERSAND_FEHLER}: {r.detail}")
+                        zeile = {
+                            "betrieb": r.eintrag.betrieb, "ort": r.eintrag.ort,
+                            "email": r.eintrag.email, "website": r.eintrag.website,
+                            "typ": r.eintrag.typ, "ampel": r.ampel,
+                            "signale": r.signale, "versand": vermerk,
+                        }
+                        write_lead_to_sheet(zeile)
+                        st.session_state["leads"].append({
+                            **zeile,
+                            "datum": datetime.datetime.now().strftime("%d.%m.%Y %H:%M"),
+                        })
+
+                # Zusammenfassung
+                st.markdown("**Ergebnis:**")
+                if nur_pruefen:
+                    st.info(f"Trockenlauf — nichts verschickt. "
+                            f"{len(erg.bereit)} bereit (GELB), "
+                            f"{len(erg.uebersprungen)} übersprungen, "
+                            f"{len(erg.fehler)} Fehler, "
+                            f"{len(erg.parse_fehler)} Zeilen unlesbar.")
+                else:
+                    st.success(f"✅ {len(erg.versendet)} Update-Mail(s) versendet.")
+                    if erg.fehler:
+                        st.error(f"❌ {len(erg.fehler)} fehlgeschlagen (siehe unten).")
+                    st.write(f"{len(erg.uebersprungen)} übersprungen (nicht GELB), "
+                             f"{len(erg.parse_fehler)} Zeilen unlesbar.")
+
+                def _liste(titel, items, fmt):
+                    if items:
+                        st.markdown(f"*{titel}:*")
+                        for r in items:
+                            st.write(fmt(r))
+
+                _liste("Bereit (GELB, Trockenlauf)", erg.bereit,
+                       lambda r: f"🟡 {r.eintrag.betrieb} — {r.eintrag.email} — {r.signale}")
+                _liste("Versendet", erg.versendet,
+                       lambda r: f"✅ {r.eintrag.betrieb} — {r.eintrag.email}")
+                _liste("Fehlgeschlagen", erg.fehler,
+                       lambda r: f"❌ {r.eintrag.betrieb} — {r.eintrag.email} — {r.detail}")
+                _liste("Übersprungen (nicht GELB)", erg.uebersprungen,
+                       lambda r: f"⏭️ {r.eintrag.betrieb} — Ampel {r.ampel} — {r.detail}")
+                if erg.parse_fehler:
+                    st.markdown("*Unlesbare Zeilen:*")
+                    for z in erg.parse_fehler:
+                        st.write(f"⚠️ {z}")
 
         st.markdown("---")
         st.markdown(f"🔗 [Alle Leads im Google Sheet öffnen](https://docs.google.com/spreadsheets/d/{SHEET_ID}/edit)")
