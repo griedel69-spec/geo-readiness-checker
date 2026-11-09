@@ -139,14 +139,14 @@ Hand aus.
 ## Technischer Aufbau (Repo geo-readiness-checker)
 
 - `geo_checker_app.py` — Streamlit-App: Formular, Ampel-Anzeige, 14 Zusatz-Checks, Handlungsempfehlungen, Verkaufs-Brücke, Admin-Bereich
-- `signals/` — **unverändert übernommene** Kopie der Signal-Module 1–3 aus geo-radar (Herkunfts-Commit in `signals/__init__.py` gepinnt: `c6546a3839829776ccbfc3b24d384057e4ad1817`). Änderungen an der Prüf-Logik gehören ins geo-radar-Repo, danach hierher nachkopieren und den Commit-Stand aktualisieren.
+- `signals/` — **unverändert übernommene** Kopie der Signal-Module 1–3 aus geo-radar (Herkunfts-Commit in `signals/__init__.py` gepinnt: `56d2d4d8b1d189d754d76ea19e72553b3a831d1c`). Änderungen an der Prüf-Logik gehören ins geo-radar-Repo, danach hierher nachkopieren und den Commit-Stand aktualisieren.
 - `befund.py` — baut aus den drei Signal-Ergebnissen die Ampel + Klartext + Empfehlungen
 - `befund_pdf.py` — erzeugt das einseitige Kurz-Befund-PDF (reportlab)
 - `mailer.py` — Versand (Brevo bevorzugt, SMTP-Fallback), inkl. Diagnose-Funktionen
 - `sheets.py` — Google-Sheets-Schreiblogik (Spalte-A-bündig, Kopfzeilen-Migration)
 - `nap_checker_app.py` — **separates** Tool (NAP-Konsistenz), läuft auf Streamlit Cloud, nicht Teil des Render-Deploys, nicht löschen
 - `templates/geo_optimierungspaket/` — Word-Report-Generator (docx-js) im GEO-Radar-Design für das bezahlte Paket; siehe Schritt 3 oben und die README dort
-- `tests/` — 26 automatisierte Tests (`python -m pytest tests/`)
+- `tests/` — 35 automatisierte Tests (`python -m pytest tests/`)
 
 ### Render-Umgebungsvariablen
 `ADMIN_PASSWORD`, `GCP_SERVICE_ACCOUNT_TOML`, `BREVO_API_KEY`, `MAIL_FROM`, `NOTIFY_EMAIL`, `SMTP_HOST`/`SMTP_PORT`/`SMTP_USER`/`SMTP_PASS` (Fallback, praktisch ungenutzt)

@@ -49,6 +49,36 @@ def test_versand_beide_mails(monkeypatch):
     assert any(p.get_content_type() == "application/pdf" for p in an_betrieb.iter_attachments())
 
 
+def test_update_zweite_messung_nur_an_betrieb(monkeypatch):
+    # GELB-Befund, Update-Mail geht NUR an den Betrieb (kein Gernot-Ping),
+    # mit dem 2.-Messung-Betreff und dem PDF im Anhang.
+    gesendet = []
+    monkeypatch.setenv("SMTP_HOST", "smtp.example.com")
+    monkeypatch.setenv("SMTP_USER", "checker@example.com")
+    monkeypatch.setenv("SMTP_PASS", "geheim")
+    monkeypatch.setattr(mailer, "_sende", lambda secrets, msg: gesendet.append(msg))
+
+    befund_gelb = baue_befund(_res("GRÜN"), _res("ROT"), _res("GRÜN"))
+    assert befund_gelb["overall"] == "GELB"
+    ok, info = mailer.sende_update_zweite_messung(LEAD, befund_gelb, b"%PDF-fake", secrets=None)
+
+    assert ok is True and info == ""
+    assert len(gesendet) == 1                          # nur Betrieb, kein Gernot
+    m = gesendet[0]
+    assert m["To"] == "gast@example.com"
+    assert "2. Messung" in m["Subject"] and "Hotel Teststern" in m["Subject"]
+    koerper = m.get_body(preferencelist=("plain",)).get_content()
+    assert "steht jetzt auf GELB" in koerper
+    assert any(p.get_content_type() == "application/pdf" for p in m.iter_attachments())
+
+
+def test_update_zweite_messung_ohne_konfiguration(monkeypatch):
+    for k in ("SMTP_HOST", "SMTP_USER", "SMTP_PASS", "BREVO_API_KEY", "MAIL_FROM"):
+        monkeypatch.delenv(k, raising=False)
+    ok, info = mailer.sende_update_zweite_messung(LEAD, baue_befund(_res("GRÜN"), _res("ROT"), _res("GRÜN")), b"x", secrets=None)
+    assert ok is False and "Versand nicht konfiguriert" in info
+
+
 def test_benachrichtigung_fehlgeschlagen_ist_kein_gesamtfehler(monkeypatch):
     calls = {"n": 0}
 

@@ -1,0 +1,41 @@
+:root{
+/* base palette — official CI, July 2026 briefing */
+--color-forest-900:#0d6248;
+--color-forest-700:#12805f;
+--color-forest-100:#e3f0ea;
+--color-orange-500:#f4a261;
+--color-orange-600:#e2873f;
+--color-orange-100:#fdf0e2;
+--color-taupe-500:#a29a88;
+--color-taupe-300:#d6d0c3;
+--color-taupe-100:#eeebe3;
+--color-ink-900:#2b2b27;
+--color-offwhite:#f4f7f4;
+--color-white:#ffffff;
+
+/* semantic aliases */
+--surface-page:var(--color-offwhite);
+--surface-card:var(--color-white);
+--surface-inverse:var(--color-ink-900);
+--surface-brand:var(--color-forest-900);
+--surface-accent:var(--color-orange-500);
+--surface-muted:var(--color-taupe-100);
+
+--text-primary:var(--color-ink-900);
+--text-secondary:#5c584e;
+--text-on-brand:var(--color-offwhite);
+--text-on-accent:var(--color-ink-900);
+--text-link:var(--color-forest-900);
+--text-link-hover:var(--color-forest-700);
+
+--border-default:var(--color-taupe-300);
+--border-strong:var(--color-taupe-500);
+--border-focus:var(--color-orange-500);
+
+--brand-primary:var(--color-forest-900);
+--brand-primary-hover:var(--color-forest-700);
+--accent:var(--color-orange-500);
+--accent-hover:var(--color-orange-600);
+
+/* simplified CI: when a reduced 2-color palette is requested, use --accent + --color-ink-900 only */
+}
