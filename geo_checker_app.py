@@ -553,28 +553,76 @@ if st.session_state["analyse_done"] and st.session_state["result"]:
     befund    = result["befund"]
     checks    = result["checks"]
 
-    # Ampel-Karte (statt Punkte-Score)
+    # Ergebnis-Kopf: ehrliche Teilnote mit sichtbarem Messumfang (3 von 6).
+    # KEIN GEO-Gesamtstatus — den misst erst der vollständige Check. Zentrale
+    # Aussage zuerst: Blocker ja/nein. (overall == ROT heißt im 1-3-Check genau:
+    # ein Blocker-Signal S1/S3 ist ROT; S2 kann das nie auslösen.)
+    signale = befund["signale"]
+    blocker_signale = [s for s in signale if s["key"] in ("s1", "s3")]
+    hygiene_signale = [s for s in signale if s["key"] == "s2"]
+    blocker_gefunden = befund["overall"] == "ROT"
+    gruen_basis = sum(1 for s in signale if s["status"] == "GRÜN")
+
+    if befund["overall"] == "UNBEKANNT":
+        kopf_titel = "⚪ Technik-Basis nicht prüfbar"
+    elif blocker_gefunden:
+        kopf_titel = "🔴 Blocker gefunden"
+    else:
+        kopf_titel = "✓ Kein Blocker – Technik-Basis geprüft"
+
     st.markdown(f"""
     <div class="ampel-card" style="background:{befund['farbe']}">
-      <div class="ampel-status">{befund['symbol']} {befund['overall']}</div>
-      <div class="ampel-label">GEO-Ampel · KI-Sichtbarkeit Ihres Betriebs</div>
+      <div class="ampel-status">{kopf_titel}</div>
+      <div class="ampel-label">Technik-Basis · {gruen_basis} von 3 Signalen grün · 3 von 6 GEO-Signalen geprüft</div>
       <div class="ampel-klartext">{befund['klartext']}</div>
     </div>
     """, unsafe_allow_html=True)
 
-    # Die drei Signale im Detail
-    st.subheader("🚦 Die drei Prüfbereiche")
-    signal_html = []
-    for s in befund["signale"]:
+    # Gruppe 1: echte Blocker (S1/S3). Nur hier kann „BLOCKER" stehen.
+    st.subheader("🚦 Blocker-Check — verhindert etwas die KI-Auffindbarkeit?")
+    blocker_html = []
+    for s in blocker_signale:
         farbe = AMPEL_FARBEN[s["status"]]
-        signal_html.append(
+        marke = "BLOCKER" if s["status"] == "ROT" else "kein Blocker"
+        blocker_html.append(
             f'<div class="signal-card" style="border-left:4px solid {farbe}">'
             f'<span class="signal-status" style="background:{farbe}">{s["status"]}</span>'
-            f'<span class="signal-name">{s["name"]}</span>'
+            f'<span class="signal-name">{s["name"]} — {marke}</span>'
             f'<div class="signal-grund">{s["grund"]}</div>'
             f'</div>'
         )
-    st.markdown("\n".join(signal_html), unsafe_allow_html=True)
+    st.markdown("\n".join(blocker_html), unsafe_allow_html=True)
+    if blocker_gefunden:
+        st.markdown("→ **Ein Blocker ist aktiv:** KI-Crawler können Ihre Website "
+                    "nicht als Quelle lesen. Das hat Vorrang.")
+    else:
+        st.markdown("→ **Kein Blocker.** KI-Crawler können Ihre Website technisch lesen.")
+
+    # Gruppe 2: Ausbau-Hebel (S2). Bewusst OHNE Blocker-Ampelfarbe und mit
+    # explizitem „kein Blocker", damit fehlendes Schema nie als Sperre wirkt.
+    if hygiene_signale:
+        st.subheader("◆ Ausbau-Hebel — kein Blocker, aber stärkt die Grundlage")
+        hyg_html = []
+        for s in hygiene_signale:
+            vorhanden = s["status"] == "GRÜN"
+            marke = "vorhanden" if vorhanden else "kein Blocker · Ausbau-Hebel"
+            rahmen = AMPEL_FARBEN["GRÜN"] if vorhanden else "#8a8f98"
+            hyg_html.append(
+                f'<div class="signal-card" style="border-left:4px solid {rahmen}">'
+                f'<span class="signal-status" style="background:{rahmen}">{marke}</span>'
+                f'<span class="signal-name">{s["name"]}</span>'
+                f'<div class="signal-grund">{s["grund"]}</div>'
+                f'</div>'
+            )
+        st.markdown("\n".join(hyg_html), unsafe_allow_html=True)
+
+    # Messumfang ehrlich: der volle GEO-Status braucht den kostenpflichtigen Check.
+    st.markdown(
+        '<div class="signal-grund" style="margin-top:12px">▸ <strong>Vollständiger '
+        'GEO-Status: noch offen.</strong> Die 3 entscheidenden Signale — '
+        'Google-Business-Profil, Bewertungen/Reputation und NAP-Konsistenz — '
+        'prüft erst der vollständige, kostenpflichtige GEO-Check. GRÜN gibt es nur dort.</div>',
+        unsafe_allow_html=True)
 
     # PDF- und Versand-Status
     if result.get("mail_ok"):
@@ -633,7 +681,7 @@ if st.session_state["analyse_done"] and st.session_state["result"]:
                     "priorisiert nach Wirkung auf Ihre KI-Sichtbarkeit:")
 
     if befund["empfehlungen"]:
-        st.markdown("##### 🚦 Aus den drei Prüfbereichen (höchste Priorität)")
+        st.markdown("##### 🚦 Aus den drei geprüften Signalen")
         empf_html = "".join(
             f'<div class="quickwin-card qw-hoch">'
             f'<div class="qw-titel">{i}. {e}</div>'
@@ -694,8 +742,12 @@ if st.session_state["analyse_done"] and st.session_state["result"]:
                        f"(Ampel UNBEKANNT). {befund['klartext']}")
         st.info(summary)
     elif not befund["empfehlungen"]:
-        st.success(f"🎉 Ampel {befund['overall']} und alle {ANZAHL_ZUSATZ_CHECKS} ergänzenden "
-                   "Checkpunkte bestanden! Ihr Betrieb ist hervorragend für KI-Sichtbarkeit aufgestellt.")
+        st.success(f"🎉 Starke technische Basis: alle drei Grundsignale und die "
+                   f"{ANZAHL_ZUSATZ_CHECKS} ergänzenden Checkpunkte bestanden. "
+                   f"Die Ampel steht dennoch auf **{befund['overall']}** — eine "
+                   f"GRÜN-Bewertung setzt den vollständigen, kostenpflichtigen "
+                   f"GEO-Check voraus (Google-Profil, Reputation, NAP-Konsistenz), "
+                   f"den dieser kostenlose Check bewusst nicht abdeckt.")
 
     # Alle technischen Einzelheiten zugeklappt — die Ampel-Botschaft oben
     # bleibt im Vordergrund, die Gründlichkeit bleibt trotzdem belegbar.
@@ -720,16 +772,22 @@ if st.session_state["analyse_done"] and st.session_state["result"]:
     if befund["verkaufsbruecke"]:
         st.markdown(f"""
         <div class="cta-box">
-          <h3>Ihre Ampel steht auf {befund['overall']} — wir bringen sie auf GRÜN.</h3>
+          <h3>Für GRÜN braucht es den vollständigen Check.</h3>
           <p>
-            Das <strong>GEO-Optimierungspaket Professional (€ 149)</strong> setzt die oben
-            genannten Maßnahmen in 8 fertige Bausteine um — inklusive dem strukturierten
-            Datensatz (digitaler Steckbrief), der Ihre „Strukturierten Betriebsdaten" von
-            GELB auf GRÜN hebt: Schema-Steckbrief, FAQ, Startseiten-Überschrift,
-            USP-Box, lokale Keywords, Google-Business-Text, Meta-Descriptions und ein neuer
-            „Über uns"-Text — geliefert innerhalb von 24 Stunden, ohne technisches Vorwissen.
+            Dieser kostenlose Check bewertet die <strong>technische Basis</strong> (Signale 1–3).
+            Eine <strong>GRÜN-Bewertung</strong> ist erst mit dem <strong>vollständigen,
+            kostenpflichtigen GEO-Check</strong> möglich — er prüft zusätzlich die für
+            KI-Empfehlungen entscheidenden Signale: Google-Business-Profil,
+            Bewertungen/Reputation und die Konsistenz Ihrer Kontaktdaten (NAP).
           </p>
-          <p style="font-size:13px;opacity:0.7;">Einmalig € 149 · kein Abo · Upgrade auf ReviewRadar möglich</p>
+          <p>
+            Das <strong>GEO-Optimierungspaket Professional (€ 99)</strong> setzt die oben
+            genannten technischen Maßnahmen in 8 fertige Bausteine um: Schema-Steckbrief, FAQ,
+            Startseiten-Überschrift, USP-Box, lokale Keywords, Google-Business-Text,
+            Meta-Descriptions und ein neuer „Über uns"-Text — geliefert innerhalb von
+            24 Stunden, ohne technisches Vorwissen.
+          </p>
+          <p style="font-size:13px;opacity:0.7;">Einmalig € 99 · kein Abo · Upgrade auf ReviewRadar möglich</p>
         </div>
         """, unsafe_allow_html=True)
     else:

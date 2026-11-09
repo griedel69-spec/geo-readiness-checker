@@ -1,7 +1,7 @@
 # GEO-Optimierungspaket — Word-Report-Vorlage (GEO-Radar-Design)
 
 Verbindliche Vorlage für **jedes** ausgelieferte GEO-Optimierungspaket-Dokument
-(das bezahlte € 149-Produkt, 7–8 Bausteine). Erzeugt ein gebrandetes `.docx`
+(das bezahlte € 99-Produkt, 7–8 Bausteine). Erzeugt ein gebrandetes `.docx`
 im selben Design wie die Live-App (`geo_checker_app.py`) und das kostenlose
 Kurz-Befund-PDF (`befund_pdf.py`) — dieselbe GEO-Radar-Sub-Marke (dunkles
 Navy + Gold), nicht das allgemeine grün/orange Beratungs-CI.

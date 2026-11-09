@@ -137,13 +137,16 @@ def erzeuge_kurzbefund_pdf(lead: dict, befund: dict) -> bytes:
 
     if befund["verkaufsbruecke"]:
         vb = Table([[Paragraph(
-            '<font color="#c9a84c"><b>Unser Angebot: GEO-Optimierungspaket Professional — € 149</b></font><br/>'
-            '<font color="white">Wir setzen die oben genannten Punkte in 8 fertige Bausteine um — '
-            'inklusive dem strukturierten Datensatz (digitaler Steckbrief), der Ihre '
-            '"Strukturierten Betriebsdaten" von GELB auf GRÜN hebt: Schema-Steckbrief, FAQ, Startseiten-Überschrift, '
-            'USP-Box, lokale Keywords, Google-Business-Text, Meta-Descriptions und ein neuer '
-            '"Über uns"-Text — geliefert innerhalb von 24 Stunden. '
-            'Antworten Sie einfach auf diese E-Mail.</font>',
+            '<font color="#c9a84c"><b>Für GRÜN braucht es den vollständigen Check</b></font><br/>'
+            '<font color="white">Dieser Gratis-Check prüft die technische Basis (Signale 1–3). '
+            'Eine GRÜN-Bewertung ist erst mit dem vollständigen, kostenpflichtigen GEO-Check '
+            'möglich — er bewertet zusätzlich Google-Business-Profil, Bewertungen/Reputation '
+            'und NAP-Konsistenz.<br/><br/>'
+            '<b>GEO-Optimierungspaket Professional — € 99:</b> Wir setzen die genannten '
+            'technischen Punkte in 8 fertige Bausteine um (Schema-Steckbrief, FAQ, '
+            'Startseiten-Überschrift, USP-Box, lokale Keywords, Google-Business-Text, '
+            'Meta-Descriptions und ein neuer "Über uns"-Text) — geliefert innerhalb von '
+            '24 Stunden. Antworten Sie einfach auf diese E-Mail.</font>',
             STYLES["normal"])]], colWidths=[170 * mm])
         vb.setStyle(TableStyle([
             ("BACKGROUND", (0, 0), (-1, -1), DUNKEL),

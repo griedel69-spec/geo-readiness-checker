@@ -2,7 +2,7 @@
 
 GEO-Radar für Gernot Riedel Tourism Consulting e.U.: kostenloser
 KI-Sichtbarkeits-Check für Tourismusbetriebe (Ampel GRÜN/GELB/ROT/UNBEKANNT)
-plus bezahltes GEO-Optimierungspaket (€ 149).
+plus bezahltes GEO-Optimierungspaket (€ 99).
 
 **Lies zuerst `.claude/skills/geo-checker-tourism/SKILL.md`** — das ist die
 laufend gepflegte, ausführliche Projekt-Doku (Produktportfolio, Live-Status,

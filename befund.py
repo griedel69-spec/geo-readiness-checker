@@ -68,10 +68,16 @@ def schema_betriebstyp(display_typ: str) -> str:
 GESAMT_KLARTEXT = {
     "GRÜN": "Ihr Betrieb ist für KI-Systeme technisch gut auffindbar. "
             "Jetzt lohnt der Feinschliff bei den Inhalten.",
-    "GELB": "Ihr Betrieb ist für KI-Systeme nur eingeschränkt lesbar. "
-            "Mit wenigen gezielten Maßnahmen ist deutlich mehr Sichtbarkeit möglich.",
+    "GELB": "Dieser kostenlose Check prüft die technische Basis Ihrer Website "
+            "(Signale 1–3: KI-Zugang, strukturierte Daten, Maschinenlesbarkeit). "
+            "Für eine GRÜN-Bewertung ist der vollständige, kostenpflichtige "
+            "GEO-Check nötig — er bewertet zusätzlich die für KI-Empfehlungen "
+            "entscheidenden Signale: Google-Business-Profil, Bewertungen/"
+            "Reputation und die Konsistenz Ihrer Kontaktdaten (NAP).",
     "ROT": "Mindestens ein Blocker verhindert, dass KI-Systeme Ihren Betrieb "
-           "zuverlässig finden und empfehlen können. Hier besteht Handlungsbedarf.",
+           "zuverlässig finden und empfehlen können. Das hat Vorrang — und "
+           "GRÜN bestätigt ohnehin erst der vollständige, kostenpflichtige "
+           "GEO-Check (inkl. Google-Profil, Reputation, NAP).",
     "UNBEKANNT": "Die Website war für die automatische Prüfung nicht erreichbar. "
                  "Es ist keine seriöse Aussage möglich — bitte später erneut prüfen.",
 }

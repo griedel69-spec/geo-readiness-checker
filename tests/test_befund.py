@@ -69,16 +69,24 @@ def test_overall_unbekannt_ist_kein_gruen():
 def test_overall_alle_unbekannt_bleibt_unbekannt():
     assert compute_overall(["UNBEKANNT", "UNBEKANNT", "UNBEKANNT"]) == "UNBEKANNT"
 
-def test_overall_gruen_nur_wenn_alles_gruen():
-    assert compute_overall(["GRÜN", "GRÜN", "GRÜN"]) == "GRÜN"
+def test_overall_1_3_kappt_bei_gelb_gruen_braucht_vollcheck():
+    # Rollenregel seit 2026-11-09: GRÜN verlangt das grüne Kern-Gate (S4/S5),
+    # das der kostenlose 1-3-Check nicht erhebt. Alle drei Basissignale grün
+    # ergibt deshalb GELB, nicht GRÜN — GRÜN bestätigt erst der Vollcheck.
+    assert compute_overall(["GRÜN", "GRÜN", "GRÜN"]) == "GELB"
+    # Mit grünem Kern-Gate (Vollcheck 1-5) wird GRÜN wieder erreichbar.
+    assert compute_overall(["GRÜN", "GRÜN", "GRÜN", "GRÜN", "GRÜN"]) == "GRÜN"
 
 
 # ── baue_befund ──
 
-def test_befund_gruen_ohne_verkaufsbruecke():
+def test_befund_1_3_alles_gruen_ist_gelb_mit_verkaufsbruecke():
+    # Alle drei Basissignale grün -> technische Basis stark, aber GELB (GRÜN
+    # braucht den Vollcheck). Keine Signal-Empfehlungen, aber die
+    # Verkaufsbrücke zum Vollcheck greift (GELB).
     b = baue_befund(_res("GRÜN"), _res("GRÜN"), _res("GRÜN"))
-    assert b["overall"] == "GRÜN"
-    assert b["verkaufsbruecke"] is False
+    assert b["overall"] == "GELB"
+    assert b["verkaufsbruecke"] is True
     assert b["empfehlungen"] == []
     assert len(b["signale"]) == 3
 

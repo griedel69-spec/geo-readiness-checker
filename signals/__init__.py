@@ -31,10 +31,12 @@ Ergebnis-relevante Änderungen seit dem vorigen Stand (c6546a3, 21.07.2026):
 
 Ampel-Konvention (aus geo-radar CLAUDE.md):
     GRÜN / GELB / ROT / UNBEKANNT — "Null Halluzination: UNBEKANNT statt raten".
-    Gesamt-Ampel signalbewusst (NICHT unmarkiertes Worst-of): ROT nur bei
-    einem echten Blocker (Signal 1 oder 3 ROT — im Tiefenaudit auch 4/5);
-    Signal 2 (strukturierte Daten) löst NIE allein ROT aus, zählt höchstens
-    GELB. GRÜN nur, wenn alle erhobenen Signale GRÜN; alle UNBEKANNT ->
+    Gesamt-Ampel rollenbasiert (NICHT unmarkiertes Worst-of): ROT nur bei
+    einem echten Blocker (Signal 1 oder 3 ROT) oder Kern-Gate-Mangel (4/5);
+    Signal 2 löst NIE allein ROT aus. GRÜN ist nur mit grünem Kern-Gate
+    (S4 UND S5) erreichbar — der kostenlose 1-3-Check misst die Google-Seite
+    nicht und vergibt deshalb nie GRÜN, nur max. GELB; GRÜN bestätigt erst
+    der vollständige, kostenpflichtige Check (1-6). Alle UNBEKANNT ->
     UNBEKANNT; sonst GELB. Siehe berechne_gesamtampel/compute_overall unten.
 """
 from pathlib import Path
@@ -57,22 +59,27 @@ def _norm_status(wert: str) -> str:
 
 def berechne_gesamtampel(status_je_signal: dict) -> str:
     """
-    Gesamt-Ampel — signalbewusste, evidenzbasierte Regel, deckungsgleich mit
+    Gesamt-Ampel — rollenbasierte, evidenzbasierte Regel, deckungsgleich mit
     geo-radar (scanner.gesamt_ampel / build_report.berechne_gesamtampel,
-    Regel seit 2026-08-12). Erwartet ein Mapping {signalnummer: status}.
+    Regel seit 2026-11-09). Erwartet ein Mapping {signalnummer: status}.
 
-    ROT NUR bei einem echten Blocker: Signal 1 ROT (KI-Zugang gesperrt),
-    Signal 3 ROT (Inhalte für Crawler unsichtbar) oder — nur im Tiefenaudit —
-    Signal 4/5 ROT. **Signal 2 (strukturierte Daten) löst NIE allein ROT
-    aus**: fehlendes JSON-LD-Markup ist Basishygiene, aber kein belegter
-    KI-Sichtbarkeitshebel (Ahrefs-Experiment ohne signifikanten Effekt,
-    searchVIU, Google "Mythbusting generative AI search", ChatGPT ordnet
-    Unterkünfte zu ~88,8 % über Google Places zu, nicht über Website-Markup).
-    Es zählt höchstens für GELB.
+    Rollen: Blocker (S1/S3) und Kern-Gate (S4/S5) dürfen ROT auslösen;
+    Reputation (S6) ist ampel-weich; Hygiene (S2, strukturierte Daten) ist
+    nie deckelnd. **Signal 2 löst NIE allein ROT aus** (Basishygiene, kein
+    belegter KI-Sichtbarkeitshebel: Ahrefs, searchVIU, Google "Mythbusting
+    generative AI search"; ChatGPT ordnet Unterkünfte zu ~88,8 % über Google
+    Places zu, nicht über Website-Markup).
 
-    GRÜN nur, wenn alle erhobenen Signale GRÜN. Alle erhobenen UNBEKANNT ->
-    UNBEKANNT. Sonst GELB. Fehlende Signale (der kostenlose Check erhebt nur
-    1-3) werden einfach nicht betrachtet.
+    **GRÜN ist nur erreichbar, wenn das Kern-Gate (S4 Google-Profil-/NAP-
+    Konsistenz UND S5 Google-Business-Profil) gemessen und grün ist.** Der
+    kostenlose Check erhebt nur die Signale 1-3 (technische Basis) und sieht
+    die Google-Seite nicht — er kann deshalb nie GRÜN vergeben, nur maximal
+    GELB. GRÜN bestätigt erst der vollständige, kostenpflichtige GEO-Check
+    (Signale 1-6). Das ist bewusst so: ein 1-3-Check misst nur ein Drittel
+    der für KI-Empfehlungen entscheidenden Signale.
+
+    ROT: Blocker (S1/S3) oder Kern-Gate (S4/S5) ROT. Alle erhobenen
+    UNBEKANNT -> UNBEKANNT. Sonst GELB.
     """
     werte = {nr: _norm_status(s) for nr, s in status_je_signal.items() if s}
     if not werte:
@@ -81,7 +88,12 @@ def berechne_gesamtampel(status_je_signal: dict) -> str:
         return "UNBEKANNT"
     if any(werte.get(nr) == "ROT" for nr in (1, 3, 4, 5)):
         return "ROT"
-    if all(s == "GRÜN" for s in werte.values()):
+    s1, s3, s4, s5 = werte.get(1), werte.get(3), werte.get(4), werte.get(5)
+    # GRÜN nur mit grünem Kern-Gate (S4+S5) — im reinen 1-3-Check nicht
+    # erhoben, also dort nie GRÜN (max. GELB). S2/S6 gaten nicht.
+    if (s4 == "GRÜN" and s5 == "GRÜN"
+            and s1 in (None, "GRÜN", "UNBEKANNT")
+            and s3 in (None, "GRÜN", "UNBEKANNT")):
         return "GRÜN"
     return "GELB"
 
