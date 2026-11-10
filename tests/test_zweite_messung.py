@@ -74,14 +74,35 @@ def test_rot_wird_uebersprungen_kein_versand():
     assert gesendet == []                              # NICHTS verschickt
 
 
-def test_gruen_wird_uebersprungen():
+def test_unbekannt_wird_uebersprungen_kein_versand():
+    # Der nicht-GELB-Riegel aus pruefe_und_update_eintrag, geprüft am im
+    # kostenlosen 1-3-Checker tatsächlich erreichbaren Fall: ist nichts
+    # messbar (alle Signale UNBEKANNT), wird NICHT versendet (Faktentreue).
+    gesendet = []
+    e = zm.BatchEintrag("Hotel Z", "Ort", "https://z.at", "Hotel (3–4 Sterne)", "z@example.at")
+    r = zm.pruefe_und_update_eintrag(
+        e, _checks=_checks("UNBEKANNT", "UNBEKANNT", "UNBEKANNT"),
+        _pdf=_pdf_stub, _sender=lambda *a, **k: (gesendet.append(1), (True, ""))[1],
+    )
+    assert r.ampel == "UNBEKANNT"
+    assert r.status == "übersprungen"
+    assert gesendet == []
+
+
+def test_technisch_sauberer_1_3_lauf_ergibt_gelb():
+    # Seit der Rollen-Ampel ist das Kern-Gate (S4/S5) im kostenlosen 1-3-
+    # Checker ungemessen -> ein reiner 1-3-Lauf erreicht NIE GRÜN, höchstens
+    # GELB. Ein technisch sauberer Betrieb (1-3 alle grün) ist damit GELB
+    # und wird — wie jeder GELB-Fall — als 2.-Messung-Update behandelt.
+    # (Früher ergab dieselbe Eingabe GRÜN und wurde übersprungen; diese
+    # Erwartung war mit der Rollen-Ampel nicht mehr erreichbar.)
     e = zm.BatchEintrag("Hotel Z", "Ort", "https://z.at", "Hotel (3–4 Sterne)", "z@example.at")
     r = zm.pruefe_und_update_eintrag(
         e, _checks=_checks("GRÜN", "GRÜN", "GRÜN"),
         _pdf=_pdf_stub, _sender=lambda *a, **k: (True, ""),
     )
-    assert r.ampel == "GRÜN"
-    assert r.status == "übersprungen"
+    assert r.ampel == "GELB"
+    assert r.status == "versendet"
 
 
 def test_trockenlauf_sendet_nicht():
