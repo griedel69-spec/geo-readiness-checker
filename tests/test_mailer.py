@@ -72,6 +72,34 @@ def test_update_zweite_messung_nur_an_betrieb(monkeypatch):
     assert any(p.get_content_type() == "application/pdf" for p in m.iter_attachments())
 
 
+def test_update_zweite_messung_nennt_den_echten_offenen_punkt(monkeypatch):
+    # Die Mail benennt NICHT pauschal "Schema", sondern den tatsächlich
+    # gemessenen offenen Punkt. Rendering-Schwäche (S3 GELB) bei grünem
+    # Markup (S2 GRÜN) -> Rendering-Empfehlung im Text, KEINE Schema-Zeile.
+    gesendet = []
+    monkeypatch.setenv("SMTP_HOST", "smtp.example.com")
+    monkeypatch.setenv("SMTP_USER", "checker@example.com")
+    monkeypatch.setenv("SMTP_PASS", "geheim")
+    monkeypatch.setattr(mailer, "_sende", lambda secrets, msg: gesendet.append(msg))
+
+    befund_s3 = baue_befund(_res("GRÜN"), _res("GRÜN"), _res("GELB"))
+    assert befund_s3["overall"] == "GELB"
+    ok, info = mailer.sende_update_zweite_messung(LEAD, befund_s3, b"%PDF", secrets=None)
+    assert ok is True
+    koerper = gesendet[0].get_body(preferencelist=("plain",)).get_content()
+    assert "direkt im HTML der Startseite" in koerper      # S3-Empfehlung
+    assert "Schema.org-Auszeichnung" not in koerper        # nicht pauschal Schema
+    assert "diese Hebel gesehen" in koerper
+
+    # Gegenprobe: fehlendes Markup (S2 ROT) -> dann steht die Schema-Zeile da.
+    gesendet.clear()
+    befund_s2 = baue_befund(_res("GRÜN"), _res("ROT"), _res("GRÜN"))
+    mailer.sende_update_zweite_messung(LEAD, befund_s2, b"%PDF", secrets=None)
+    koerper2 = gesendet[0].get_body(preferencelist=("plain",)).get_content()
+    assert "Schema.org-Auszeichnung" in koerper2
+    assert "direkt im HTML der Startseite" not in koerper2
+
+
 def test_update_zweite_messung_ohne_konfiguration(monkeypatch):
     for k in ("SMTP_HOST", "SMTP_USER", "SMTP_PASS", "BREVO_API_KEY", "MAIL_FROM"):
         monkeypatch.delenv(k, raising=False)
