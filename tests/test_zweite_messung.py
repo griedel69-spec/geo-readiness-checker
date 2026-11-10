@@ -89,20 +89,39 @@ def test_unbekannt_wird_uebersprungen_kein_versand():
     assert gesendet == []
 
 
-def test_technisch_sauberer_1_3_lauf_ergibt_gelb():
+def test_technisch_sauber_nutzt_gratis_top_mail():
     # Seit der Rollen-Ampel ist das Kern-Gate (S4/S5) im kostenlosen 1-3-
     # Checker ungemessen -> ein reiner 1-3-Lauf erreicht NIE GRÜN, höchstens
-    # GELB. Ein technisch sauberer Betrieb (1-3 alle grün) ist damit GELB
-    # und wird — wie jeder GELB-Fall — als 2.-Messung-Update behandelt.
-    # (Früher ergab dieselbe Eingabe GRÜN und wurde übersprungen; diese
-    # Erwartung war mit der Rollen-Ampel nicht mehr erreichbar.)
+    # GELB. Ein technisch sauberer Betrieb (1-3 alle grün) ist damit GELB.
+    # Sonderfall: NICHT die Standard-Update-Mail (die fälschlich fehlende
+    # strukturierte Daten behaupten würde), sondern die faktentreue
+    # "Gratis-Signale top"-Mail wird verschickt.
+    standard, top = [], []
     e = zm.BatchEintrag("Hotel Z", "Ort", "https://z.at", "Hotel (3–4 Sterne)", "z@example.at")
     r = zm.pruefe_und_update_eintrag(
-        e, _checks=_checks("GRÜN", "GRÜN", "GRÜN"),
-        _pdf=_pdf_stub, _sender=lambda *a, **k: (True, ""),
+        e, _checks=_checks("GRÜN", "GRÜN", "GRÜN"), _pdf=_pdf_stub,
+        _sender=lambda *a, **k: (standard.append(1), (True, ""))[1],
+        _sender_top=lambda *a, **k: (top.append(1), (True, ""))[1],
     )
     assert r.ampel == "GELB"
     assert r.status == "versendet"
+    assert top == [1] and standard == []        # Sondermail, nicht Standard
+
+
+def test_echte_1_3_luecke_nutzt_standard_mail():
+    # Gegenstück: GELB mit echter Lücke auf einem Gratis-Signal (S2 ROT =
+    # fehlendes Markup) ist KEIN Sonderfall -> weiterhin die Standard-
+    # Update-Mail (ROT→GELB), nicht die Gratis-top-Mail.
+    standard, top = [], []
+    e = zm.BatchEintrag("Hotel Y", "Ort", "https://y.at", "Hotel (3–4 Sterne)", "y@example.at")
+    r = zm.pruefe_und_update_eintrag(
+        e, _checks=_checks("GRÜN", "ROT", "GRÜN"), _pdf=_pdf_stub,
+        _sender=lambda *a, **k: (standard.append(1), (True, ""))[1],
+        _sender_top=lambda *a, **k: (top.append(1), (True, ""))[1],
+    )
+    assert r.ampel == "GELB"
+    assert r.status == "versendet"
+    assert standard == [1] and top == []         # Standard, nicht Sondermail
 
 
 def test_trockenlauf_sendet_nicht():

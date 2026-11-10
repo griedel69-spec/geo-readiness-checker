@@ -25,7 +25,7 @@ from urllib.parse import urlparse
 from signals import check_robots, check_schema, check_rendering
 from befund import baue_befund, signal_kurzzeile, schema_betriebstyp
 from befund_pdf import erzeuge_kurzbefund_pdf
-from mailer import sende_update_zweite_messung
+from mailer import sende_update_zweite_messung, sende_update_gratis_top
 
 
 def _domain(url: str) -> str:
@@ -105,6 +105,7 @@ def pruefe_und_update_eintrag(
     _checks=None,
     _pdf=erzeuge_kurzbefund_pdf,
     _sender=sende_update_zweite_messung,
+    _sender_top=sende_update_gratis_top,
 ) -> EintragErgebnis:
     """
     Ein Betrieb: live neu messen -> bei GELB Update-Mail (bzw. im Trockenlauf
@@ -135,6 +136,14 @@ def pruefe_und_update_eintrag(
                       f"die 2.-Messung-Mail (ROT→GELB) würde nicht zutreffen.")
         return erg
 
+    # Sonderfall: auf ALLEN kostenlosen Signalen (1-3) tadellos. Overall ist
+    # dennoch GELB, weil der Gratis-Check die Google-Seite (S4/S5) nicht misst
+    # und die Rollen-Ampel einen reinen 1-3-Lauf auf höchstens GELB deckelt.
+    # Dann die faktentreue "Gratis-Signale top"-Mail statt der Standard-
+    # Update-Mail, die fälschlich fehlende strukturierte Daten behaupten würde.
+    gratis_top = all(s["status"] == "GRÜN" for s in befund["signale"])
+    sender = _sender_top if gratis_top else _sender
+
     lead = {"betrieb": e.betrieb, "ort": e.ort, "email": e.email,
             "website": e.website, "typ": e.typ}
     try:
@@ -146,12 +155,15 @@ def pruefe_und_update_eintrag(
 
     if nur_pruefen:
         erg.status = "bereit"
-        erg.detail = "GELB — würde Update-Mail senden (Trockenlauf, nichts verschickt)."
+        welche = ("Gratis-Signale-top-Mail" if gratis_top
+                  else "Standard-Update-Mail (ROT→GELB)")
+        erg.detail = (f"GELB — würde {welche} senden "
+                      f"(Trockenlauf, nichts verschickt).")
         return erg
 
     letzter = ""
     for versuch in range(retry + 1):
-        ok, info = _sender(lead, befund, erg.pdf_bytes, secrets=secrets)
+        ok, info = sender(lead, befund, erg.pdf_bytes, secrets=secrets)
         if ok:
             erg.status = "versendet"
             erg.detail = info or ""

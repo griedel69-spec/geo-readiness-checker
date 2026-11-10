@@ -222,6 +222,69 @@ def sende_update_zweite_messung(lead: dict, befund: dict, pdf_bytes: bytes,
     return True, ""
 
 
+def sende_update_gratis_top(lead: dict, befund: dict, pdf_bytes: bytes,
+                            secrets=None) -> tuple[bool, str]:
+    """
+    Sonderfall der „2. Messung": Betrieb ist auf ALLEN kostenlos prüfbaren
+    Signalen (1-3) tadellos. Die Gesamt-Ampel steht trotzdem auf GELB, weil
+    der kostenlose Check die Google-Seite (Signal 4/5/6) nicht misst und die
+    Rollen-Ampel einen reinen 1-3-Lauf deshalb auf höchstens GELB deckelt.
+
+    Die Standard-Update-Mail wäre hier UNWAHR — sie behauptet „was noch fehlt,
+    sind strukturierte Betriebsdaten", die bei diesem Betrieb aber vorhanden
+    sind (Signal 2 GRÜN). Deshalb ein eigener, faktentreuer Text: die
+    Gratis-Signale sind in Ordnung, der Hebel liegt auf der (hier nicht
+    mitgeprüften) Google-Seite. KEIN Preis, kein Bestell-CTA — bewusst als
+    Gesprächsöffner (Freigabe Gernot, 2026-11-10).
+
+    Signatur identisch zu sende_update_zweite_messung, damit beide im
+    Aufrufer austauschbar injizierbar sind. Rückgabe: (ok, fehlertext).
+    """
+    if not transport(secrets):
+        return False, ("Versand nicht konfiguriert — es fehlt entweder "
+                       "BREVO_API_KEY (+ MAIL_FROM) oder SMTP_HOST/SMTP_USER/SMTP_PASS")
+
+    betrieb = lead.get("betrieb", "Ihr Betrieb")
+    dateiname = f"GEO-Kurz-Befund_{betrieb.replace(' ', '_')}.pdf"
+    betreff = f"Ihr GEO-Check für {betrieb}: aktualisiertes Ergebnis (2. Messung)"
+    text = (
+        f"Guten Tag,\n\n"
+        f"vor Kurzem haben Sie von mir einen kostenlosen GEO-Readiness-Kurzbefund "
+        f"für {betrieb} erhalten — die Analyse, wie gut Ihr Betrieb für KI-"
+        f"Suchsysteme wie ChatGPT, Perplexity und Google AI sichtbar ist. "
+        f"Damals stand Ihre GEO-Ampel auf ROT.\n\n"
+        f"Ich habe meine Bewertungsmethodik inzwischen geschärft: Die "
+        f"Prüfkriterien werden jetzt nach ihrer tatsächlichen Wirkung auf die "
+        f"KI-Sichtbarkeit gewichtet. Eine Neumessung Ihrer Website zeigt ein "
+        f"deutlich besseres Bild:\n\n"
+        f"Die kostenlos prüfbaren Signale Ihrer Website sind durchweg in "
+        f"Ordnung — der Zugang für KI-Systeme, die Maschinenlesbarkeit Ihrer "
+        f"Seite und Ihre strukturierten Betriebsdaten. Auf diesen Punkten gibt "
+        f"es nichts zu beanstanden.\n\n"
+        f"Ihre Gesamt-Ampel steht damit auf GELB. 🟡 Nicht wegen einer Lücke "
+        f"auf Ihrer Website, sondern weil der kostenlose Check einen "
+        f"entscheidenden Bereich nicht mitprüfen kann: Ihr Google-"
+        f"Unternehmensprofil und Ihre Sichtbarkeit auf Bewertungs- und "
+        f"Buchungsportalen. Genau dort entscheidet sich erfahrungsgemäß am "
+        f"stärksten, ob KI-Systeme Ihren Betrieb empfehlen.\n\n"
+        f"Ihren aktualisierten Kurz-Befund als PDF finden Sie im Anhang dieser "
+        f"E-Mail.\n\n"
+        f"Wenn Sie wissen möchten, wie Ihr Betrieb auf genau diesen Punkten "
+        f"dasteht, schaue ich mir das gerne für Sie an — eine kurze Antwort "
+        f"auf diese Mail genügt.\n\n"
+        f"Herzliche Grüße\n"
+        f"Gernot Riedel\n"
+        f"Gernot Riedel Tourism Consulting · TÜV-zertifizierter KI-Trainer\n"
+        f"kontakt@gernot-riedel.com · +43 676 7237811 · gernot-riedel.com\n"
+    )
+    try:
+        _versende(secrets, lead.get("email", ""), betreff, text,
+                  [(dateiname, pdf_bytes)])
+    except Exception as e:
+        return False, f"Versand an Betrieb fehlgeschlagen: {e}"
+    return True, ""
+
+
 def sende_kurzbefund(lead: dict, befund: dict, pdf_bytes: bytes,
                      secrets=None) -> tuple[bool, str]:
     """
