@@ -13,7 +13,7 @@ Automatisierte GEO-Sichtbarkeitsprüfung (Ampel) + optionales Optimierungspaket 
 
 ## Produktportfolio
 
-### GEO-Optimierungspaket Professional — € 149 (einmalig)
+### GEO-Optimierungspaket Professional — € 99 (einmalig)
 Das kostenpflichtige Kernprodukt. **8 fertige Bausteine** für einen Betrieb:
 
 1. **Strukturierter Datensatz (digitaler Steckbrief)** — Schema.org/JSON-LD-Auszeichnung als Beherbergungsbetrieb (Hotel/BedAndBreakfast/…). Größter GELB-Hebel: bringt die "Strukturierten Betriebsdaten" von fehlend/unvollständig auf vollständig (Signal 2 löst seit der signalbewussten Ampel kein ROT mehr aus — siehe Gesamt-Ampel-Regel unten).
@@ -22,10 +22,10 @@ Das kostenpflichtige Kernprodukt. **8 fertige Bausteine** für einen Betrieb:
 4. **USP-Box** — 4 Alleinstellungsmerkmale
 5. **Lokale Keywords** — 20 Begriffe für die Region
 6. **Google Business Profil-Text** — max 750 Zeichen, keyword-reich
-7. **Meta-Descriptions** — Startseite, Zimmer, Preise
-8. **"Über uns" neu** — 250–300 Wörter, KI-lesbar
+7. **Meta-Descriptions** — Startseite, Zimmer, Kontakt
+8. **"Über uns" neu** — 200–350 Wörter, KI-lesbar
 
-**Preis:** € 149 einmalig, kein Abo · **Lieferung:** fertig formatiertes Dokument, i.d.R. per E-Mail innerhalb 24h
+**Preis:** € 99 einmalig, kein Abo · **Lieferung:** fertig formatiertes Dokument, i.d.R. per E-Mail innerhalb 24h
 
 ### ReviewRadar — ab € 149 (einmalig)
 Upsell nach GEO-Paket bzw. bei GELB/ROT-Ampel direkt mitbeworben. Bewertungsanalyse für Hotels — eigener, ausführlicher Skill: `reviewradar`.
@@ -56,12 +56,12 @@ Verwandtes, aber **separates** Produkt: destinationsweites Screening für TVBs/D
    - **Signal 3** — Maschinenlesbarkeit der Startseite (Adresse/Telefon im Roh-HTML, SPA-Erkennung)
 3. **Gesamt-Ampel** aus den Signalen (`signals/__init__.py::compute_overall` → `berechne_gesamtampel`): **signalbewusst, kein unmarkiertes Worst-of** (deckungsgleich mit geo-radar `scanner.gesamt_ampel`/`build_report.berechne_gesamtampel`). ROT nur bei einem echten Blocker — Signal 1 ROT (KI-Zugang gesperrt) oder Signal 3 ROT (Inhalte für Crawler unsichtbar); im Tiefenaudit zusätzlich Signal 4/5. **Signal 2 (strukturierte Daten) löst NIE allein ROT aus** (Basishygiene, kein belegter KI-Sichtbarkeitshebel), zählt höchstens GELB. GRÜN nur, wenn alle erhobenen Signale GRÜN; alle UNBEKANNT → UNBEKANNT; sonst GELB. "Null Halluzination" — was nicht messbar ist, wird ehrlich als UNBEKANNT ausgewiesen, nie geraten.
 4. Zusätzlich **14 ergänzende technische Checkpunkte** (HTTPS, Ladezeit, Viewport, Sitemap, Canonical, interne Links, Meta-Description, Title, H1, Alt-Texte, Open Graph, lang/hreflang …) — eigener Regex-Code in `geo_checker_app.py`, in der UI zugeklappt unter "Technische Details für Ihren Webentwickler".
-5. **Kurz-Befund-PDF** (eine Seite, `befund_pdf.py`/reportlab) wird automatisch erzeugt und **per E-Mail an den Betrieb verschickt** — bei GELB/ROT mit Verkaufs-Brücke zum € 149-Paket.
+5. **Kurz-Befund-PDF** (eine Seite, `befund_pdf.py`/reportlab) wird automatisch erzeugt und **per E-Mail an den Betrieb verschickt** — bei GELB/ROT mit Verkaufs-Brücke zum € 99-Paket.
 6. **Benachrichtigung an Gernot bei jedem Versand** (nicht erst beim Kauf) — bei GELB/ROT als "💰 VERKAUFSCHANCE" markiert, PDF im Anhang.
 7. Lead landet im Google Sheet (Spalten: Datum, Betrieb, Ort, E-Mail, Website, Typ, Ampel, Signale, Versand-Status).
 
 ### Verkaufsprinzip
-Anders als in der Vorversion sieht der Betrieb heute **sofort und kostenlos** seinen technischen Befund (Ampel + Details + PDF) — das ist bewusst großzügig, um Vertrauen zu schaffen. **Nicht enthalten** sind die 8 fertigen Text-Bausteine des € 149-Pakets — die bleiben das kostenpflichtige Upsell, das nach der Ampel beworben wird ("Ihre Ampel steht auf {Ampel} — wir bringen sie auf GRÜN").
+Anders als in der Vorversion sieht der Betrieb heute **sofort und kostenlos** seinen technischen Befund (Ampel + Details + PDF) — das ist bewusst großzügig, um Vertrauen zu schaffen. **Nicht enthalten** sind die 8 fertigen Text-Bausteine des € 99-Pakets — die bleiben das kostenpflichtige Upsell, das nach der Ampel beworben wird ("Ihre Ampel steht auf {Ampel} — wir bringen sie auf GRÜN").
 
 ### Mail-Versand (technisch wichtig)
 Render blockt ausgehende SMTP-Verbindungen (GMX/iCloud liefen nachweislich in Timeouts). Versand läuft daher über die **Brevo-Web-API** (`BREVO_API_KEY` + `MAIL_FROM` als Render-Umgebungsvariablen; SMTP bleibt als Fallback im Code, funktioniert aber praktisch nicht von Render aus). In Brevo muss "Authorised IPs" deaktiviert bleiben (Render-Server haben wechselnde Adressen). `NOTIFY_EMAIL` (Standard: kontakt@gernot-riedel.com) bestimmt den Empfänger der Verkaufschance-Benachrichtigung. Diagnose + Test-Mail-Knopf: Admin-Bereich der App (Passwort `ADMIN_PASSWORD`).
@@ -71,7 +71,7 @@ Sheet-ID `1bNBtr9w__zlPL_5XETHhewu3TZAc7qAR1wm8sRO5WVI`, Tab "Leads". Zugriff ü
 
 ---
 
-## Workflow: Bezahltes € 149-Paket ausliefern
+## Workflow: Bezahltes € 99-Paket ausliefern
 
 **Wichtig — anders als in der Vorversion:** Die 8 Bausteine werden **nicht** direkt in einem Claude-Chat aus `web_fetch` heraus formuliert, sondern über das dafür gebaute CLI-Werkzeug im **geo-radar**-Repo:
 
@@ -116,7 +116,7 @@ Hand aus.
 
 ### Schritt 4: E-Mail-Text + Rechnung
 - E-Mail-Begleittext für Kundenversand formulieren
-- Rechnung über den `ausgangsrechnung`-Skill: € 149, Leistung "GEO-Optimierungspaket Professional, Website [url]"
+- Rechnung über den `ausgangsrechnung`-Skill: € 99, Leistung "GEO-Optimierungspaket Professional, Website [url]"
 - Empfänger: Betrieb (Name, Adresse von Website)
 
 ---
@@ -162,7 +162,7 @@ CLI-Tool, drei Stufen aus derselben Codebasis: `scanner.py` (kostenloser Batch-S
 - **E-Mail:** gernotriedel@icloud.com (persönlich — nicht mehr Teil des automatisierten Versand-Workflows)
 - **Telefon:** +43 676 7237811
 - **Website:** gernot-riedel.com
-- **Adresse:** Gernot Riedel Tourism Consulting e.U., Uferstrasse 4, A-5751 Maishofen
+- **Adresse:** Gernot Riedel Tourism Consulting, Uferstrasse 4, A-5751 Maishofen
 - **Hashtags:** #GernotGoesAI #GernotGoesKI
 
 ---
@@ -174,7 +174,7 @@ Verwende diesen Skill wenn Gernot sagt:
 - "Warum zeigt der Checker [X] an" / Fragen zur Ampel-Logik
 - "Bezahltes Paket für [Betrieb] erstellen" / "GEO-Optimierungspaket für [Betrieb]"
 - "Neuer Lead aus dem Checker" (→ Google Sheet prüfen)
-- "Rechnung über 149 Euro ausstellen"
+- "Rechnung über 99 Euro ausstellen"
 - "Mail-Versand funktioniert nicht" / SMTP-/Brevo-Diagnose
 - "Signal-Module aktualisieren" / Sync mit geo-radar
 
@@ -183,8 +183,8 @@ Verwende diesen Skill wenn Gernot sagt:
 ## Umsatzpotenzial (Referenz, unverändert seit Vorversion)
 
 Bei 10 Outreaches/Monat + 20% Conversion:
-- 2 GEO-Pakete à € 149 = € 298
+- 2 GEO-Pakete à € 99 = € 198
 - 1 ReviewRadar à € 349 = € 349
-- **Gesamt: ca. € 650/Monat** bei ~40 Min Aufwand gesamt
+- **Gesamt: ca. € 550/Monat** bei ~40 Min Aufwand gesamt
 
 Zusätzliches, separates Potenzial: destinationsweites Screening für TVBs (eigener Vertriebs-Thread, siehe oben) — noch kein Pilot gefahren, keine Preislogik fixiert.
