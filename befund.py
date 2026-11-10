@@ -122,6 +122,49 @@ _S2_ROT_EMPFEHLUNG = {
                     "KI-Systeme.",
 }
 
+# Appetizer-Ebene für die KOSTENLOSEN Ausgaben (2.-Messung-Mail, Kurz-Befund-
+# PDF, Live-App): benennt den wunden Punkt UND seine Folge für die KI-
+# Sichtbarkeit, aber bewusst NICHT das Rezept. Das volle Rezept (_EMPFEHLUNGEN
+# / _S2_ROT_EMPFEHLUNG) bleibt dem bezahlten Produkt vorbehalten — „gratis ≠
+# bezahlt", dasselbe Prinzip wie bei den Destinations-Berichten (Mangel-
+# kategorie gratis, Einzelwerte/Rezept nur in der bezahlten Karte).
+_APPETIZER = {
+    ("s1", "ROT"): "Ihre Seite sperrt derzeit KI-Dienste aus — ein Punkt, der "
+                   "Ihre Auffindbarkeit in KI-Suchsystemen unmittelbar betrifft.",
+    ("s1", "GELB"): "Beim Zugang für KI-Dienste ist noch nicht alles offen — "
+                    "einzelne Systeme erreichen Ihre Inhalte derzeit nur "
+                    "eingeschränkt.",
+    ("s1", "UNBEKANNT"): "Ob alle KI-Dienste Zugang zu Ihrer Seite haben, ließ "
+                         "sich im Schnelltest nicht abschließend klären.",
+    ("s2", "ROT"): "Die Fakten Ihres Hauses liegen für KI-Systeme noch nicht in "
+                   "der Form vor, die sie zuverlässig auslesen — der stärkste "
+                   "Hebel, damit eine KI Ihr Haus korrekt erkennt und empfiehlt.",
+    ("s2", "GELB"): "Ihre maschinenlesbaren Betriebsdaten sind angelegt, aber "
+                    "noch lückenhaft — einzelne für die KI-Erkennung wichtige "
+                    "Angaben fehlen.",
+    ("s2", "UNBEKANNT"): "Ob Ihre Betriebsdaten für KI-Systeme sauber auslesbar "
+                         "sind, ließ sich im Schnelltest nicht abschließend klären.",
+    ("s3", "ROT"): "Ihre wichtigsten Inhalte sind für KI-Crawler praktisch nicht "
+                   "greifbar — sie stehen nicht im ausgelieferten Seiteninhalt.",
+    ("s3", "GELB"): "Ein Teil Ihrer wichtigsten Inhalte ist für KI-Crawler noch "
+                    "nicht direkt greifbar.",
+    ("s3", "UNBEKANNT"): "Wie gut KI-Crawler Ihre Startseite lesen können, ließ "
+                         "sich im Schnelltest nicht abschließend klären.",
+}
+
+
+def appetizer_hebel(befund: dict) -> list:
+    """Appetizer-Zeilen (wunder Punkt + Folge, KEIN Rezept) je nicht-grünem
+    Signal, in Signalreihenfolge — für die kostenlosen Ausgaben. Gegenstück zu
+    ``befund["empfehlungen"]`` (dem vollen Rezept), das dem bezahlten Produkt
+    vorbehalten bleibt."""
+    out = []
+    for s in befund["signale"]:
+        t = _APPETIZER.get((s["key"], s["status"]))
+        if t:
+            out.append(t)
+    return out
+
 
 def baue_befund(s1, s2, s3, betriebstyp: str = "unterkunft") -> dict:
     """

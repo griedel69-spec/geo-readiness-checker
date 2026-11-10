@@ -12,7 +12,7 @@ from sheets import SHEET_ID, get_sheet, schreibe_lead
 
 # Gemeinsame Prüf-Logik (Signale 1-3, übernommen aus geo-radar — siehe signals/__init__.py)
 from signals import check_robots, check_schema, check_rendering
-from befund import baue_befund, signal_kurzzeile, AMPEL_FARBEN, AMPEL_SYMBOL, schema_betriebstyp, BETRIEBSTYP_OPTIONEN
+from befund import baue_befund, signal_kurzzeile, appetizer_hebel, AMPEL_FARBEN, AMPEL_SYMBOL, schema_betriebstyp, BETRIEBSTYP_OPTIONEN
 from befund_pdf import erzeuge_kurzbefund_pdf
 from mailer import sende_kurzbefund, smtp_status, sende_testmail
 import zweite_messung
@@ -681,13 +681,17 @@ if st.session_state["analyse_done"] and st.session_state["result"]:
         st.markdown("Basierend auf der Analyse ergeben sich folgende **konkrete Maßnahmen**, "
                     "priorisiert nach Wirkung auf Ihre KI-Sichtbarkeit:")
 
-    if befund["empfehlungen"]:
-        st.markdown("##### 🚦 Aus den drei geprüften Signalen")
+    # Gratis-Ansicht: die drei Grundsignale nur als Appetizer (wunder Punkt +
+    # Folge), NICHT als Rezept — das volle Rezept (befund["empfehlungen"])
+    # bleibt dem bezahlten Paket vorbehalten. Deckungsgleich mit Mail + PDF.
+    hebel = appetizer_hebel(befund)
+    if hebel:
+        st.markdown("##### 🚦 Wo Ihre drei Grundsignale noch Potenzial haben")
         empf_html = "".join(
             f'<div class="quickwin-card qw-hoch">'
             f'<div class="qw-titel">{i}. {e}</div>'
             f'</div>'
-            for i, e in enumerate(befund["empfehlungen"], 1)
+            for i, e in enumerate(hebel, 1)
         )
         st.markdown(empf_html, unsafe_allow_html=True)
 

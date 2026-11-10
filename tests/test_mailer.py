@@ -72,6 +72,36 @@ def test_update_zweite_messung_nur_an_betrieb(monkeypatch):
     assert any(p.get_content_type() == "application/pdf" for p in m.iter_attachments())
 
 
+def test_update_zweite_messung_ist_appetizer_ohne_rezept(monkeypatch):
+    # Die Gratis-Mail benennt den wunden Punkt + seine Folge (Appetizer),
+    # aber NICHT das Rezept. Das volle Rezept (empfehlungen) bleibt dem
+    # bezahlten Paket vorbehalten und darf im Mailtext nicht auftauchen.
+    gesendet = []
+    monkeypatch.setenv("SMTP_HOST", "smtp.example.com")
+    monkeypatch.setenv("SMTP_USER", "checker@example.com")
+    monkeypatch.setenv("SMTP_PASS", "geheim")
+    monkeypatch.setattr(mailer, "_sende", lambda secrets, msg: gesendet.append(msg))
+
+    # Rendering-Schwäche (S3 GELB) bei grünem Markup -> Appetizer-Zeile zu S3,
+    # KEIN Rezept ("direkt im HTML …").
+    befund_s3 = baue_befund(_res("GRÜN"), _res("GRÜN"), _res("GELB"))
+    assert befund_s3["overall"] == "GELB"
+    ok, info = mailer.sende_update_zweite_messung(LEAD, befund_s3, b"%PDF", secrets=None)
+    assert ok is True
+    koerper = gesendet[0].get_body(preferencelist=("plain",)).get_content()
+    assert "noch nicht direkt greifbar" in koerper          # Appetizer S3
+    assert "direkt im HTML der Startseite" not in koerper    # kein Rezept
+    assert "diese Hebel gesehen" in koerper
+
+    # Fehlendes Markup (S2 ROT) -> Appetizer-Zeile zu S2, KEIN Schema-Rezept.
+    gesendet.clear()
+    befund_s2 = baue_befund(_res("GRÜN"), _res("ROT"), _res("GRÜN"))
+    mailer.sende_update_zweite_messung(LEAD, befund_s2, b"%PDF", secrets=None)
+    koerper2 = gesendet[0].get_body(preferencelist=("plain",)).get_content()
+    assert "damit eine KI Ihr Haus korrekt erkennt" in koerper2   # Appetizer S2
+    assert "Schema.org-Auszeichnung" not in koerper2              # kein Rezept
+
+
 def test_update_zweite_messung_ohne_konfiguration(monkeypatch):
     for k in ("SMTP_HOST", "SMTP_USER", "SMTP_PASS", "BREVO_API_KEY", "MAIL_FROM"):
         monkeypatch.delenv(k, raising=False)

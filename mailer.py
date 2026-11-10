@@ -31,6 +31,8 @@ from email.message import EmailMessage
 
 import requests
 
+from befund import appetizer_hebel
+
 DEFAULT_NOTIFY = "kontakt@gernot-riedel.com"
 BREVO_URL = "https://api.brevo.com/v3/smtp/email"
 ABSENDER_NAME = "Gernot Riedel Tourism Consulting"
@@ -190,6 +192,14 @@ def sende_update_zweite_messung(lead: dict, befund: dict, pdf_bytes: bytes,
     betrieb = lead.get("betrieb", "Ihr Betrieb")
     dateiname = f"GEO-Kurz-Befund_{betrieb.replace(' ', '_')}.pdf"
     betreff = f"Ihr GEO-Check für {betrieb}: aktualisiertes Ergebnis (2. Messung)"
+    # Gratis-Mail: NUR den wunden Punkt + seine Folge benennen (Appetizer),
+    # nicht das Rezept — das bleibt dem bezahlten Paket vorbehalten. Die
+    # Appetizer-Zeilen kommen je nicht-grünem Signal aus appetizer_hebel();
+    # das volle Rezept (befund["empfehlungen"]) wird hier bewusst NICHT genutzt.
+    hebel = appetizer_hebel(befund)
+    hebel_text = ("\n".join(f"• {h}" for h in hebel) if hebel else
+                  "• Die Details zu den offenen Punkten stehen in Ihrem "
+                  "Kurz-Befund im Anhang.")
     text = (
         f"Guten Tag,\n\n"
         f"vor Kurzem haben Sie von mir einen kostenlosen GEO-Readiness-Kurzbefund "
@@ -200,11 +210,10 @@ def sende_update_zweite_messung(lead: dict, befund: dict, pdf_bytes: bytes,
         f"Prüfkriterien werden jetzt nach ihrer tatsächlichen Wirkung auf die "
         f"KI-Sichtbarkeit gewichtet. Eine Neumessung Ihrer Website zeigt:\n\n"
         f"{betrieb} steht jetzt auf GELB. 🟡\n\n"
-        f"Der Grund für die bessere Einstufung: Ihre Website ist für KI-Systeme "
-        f"grundsätzlich zugänglich und lesbar — Zugang (robots.txt) und "
-        f"Maschinenlesbarkeit sind in Ordnung. Was noch fehlt, sind "
-        f"strukturierte Betriebsdaten (Schema.org). Das ist kein Blocker mehr, "
-        f"sondern Ihr letzter Hebel Richtung GRÜN.\n\n"
+        f"GELB heißt: kein echter Blocker mehr, aber es gibt noch Ausbau-"
+        f"Potenzial. Bei Ihrer Website haben wir konkret diese Hebel gesehen:\n\n"
+        f"{hebel_text}\n\n"
+        f"Das sind keine Blocker, sondern Ihre Hebel Richtung GRÜN.\n\n"
         f"Ihren aktualisierten Kurz-Befund als PDF finden Sie im Anhang dieser "
         f"E-Mail.\n\n"
         f"Wenn Sie den Schritt auf Grün gehen möchten, unterstütze ich Sie gerne "
