@@ -162,7 +162,7 @@ CLI-Tool, drei Stufen aus derselben Codebasis: `scanner.py` (kostenloser Batch-S
 - **E-Mail:** gernotriedel@icloud.com (persönlich — nicht mehr Teil des automatisierten Versand-Workflows)
 - **Telefon:** +43 676 7237811
 - **Website:** gernot-riedel.com
-- **Adresse:** Gernot Riedel Tourism Consulting e.U., Uferstrasse 4, A-5751 Maishofen
+- **Adresse:** Gernot Riedel Tourism Consulting, Uferstrasse 4, A-5751 Maishofen
 - **Hashtags:** #GernotGoesAI #GernotGoesKI
 
 ---
