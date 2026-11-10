@@ -1,6 +1,6 @@
 ---
 name: gernot-riedel-tourism-consulting-design
-description: Use this skill to generate well-branded interfaces and assets for Gernot Riedel Tourism Consulting e.U., either for production or throwaway prototypes/mocks/etc. Contains essential design guidelines, colors, type, fonts, assets, and UI kit components for prototyping.
+description: Use this skill to generate well-branded interfaces and assets for Gernot Riedel Tourism Consulting, either for production or throwaway prototypes/mocks/etc. Contains essential design guidelines, colors, type, fonts, assets, and UI kit components for prototyping.
 user-invocable: true
 ---
 
