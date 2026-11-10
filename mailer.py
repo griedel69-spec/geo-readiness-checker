@@ -31,6 +31,8 @@ from email.message import EmailMessage
 
 import requests
 
+from befund import appetizer_hebel
+
 DEFAULT_NOTIFY = "kontakt@gernot-riedel.com"
 BREVO_URL = "https://api.brevo.com/v3/smtp/email"
 ABSENDER_NAME = "Gernot Riedel Tourism Consulting"
@@ -190,12 +192,11 @@ def sende_update_zweite_messung(lead: dict, befund: dict, pdf_bytes: bytes,
     betrieb = lead.get("betrieb", "Ihr Betrieb")
     dateiname = f"GEO-Kurz-Befund_{betrieb.replace(' ', '_')}.pdf"
     betreff = f"Ihr GEO-Check für {betrieb}: aktualisiertes Ergebnis (2. Messung)"
-    # Die offenen Punkte NICHT pauschal ("es fehlt Schema"), sondern die
-    # tatsächlich bei diesem Betrieb gemessenen — aus befund["empfehlungen"],
-    # das je nicht-grünem Signal (1-3) eine faktentreue, kundenlesbare Zeile
-    # liefert. So benennt die Mail den echten offenen Punkt (z. B. Rendering
-    # statt Schema), nicht eine Standardannahme.
-    hebel = befund.get("empfehlungen") or []
+    # Gratis-Mail: NUR den wunden Punkt + seine Folge benennen (Appetizer),
+    # nicht das Rezept — das bleibt dem bezahlten Paket vorbehalten. Die
+    # Appetizer-Zeilen kommen je nicht-grünem Signal aus appetizer_hebel();
+    # das volle Rezept (befund["empfehlungen"]) wird hier bewusst NICHT genutzt.
+    hebel = appetizer_hebel(befund)
     hebel_text = ("\n".join(f"• {h}" for h in hebel) if hebel else
                   "• Die Details zu den offenen Punkten stehen in Ihrem "
                   "Kurz-Befund im Anhang.")

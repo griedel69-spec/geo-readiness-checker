@@ -17,6 +17,8 @@ from reportlab.platypus import (
     Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle,
 )
 
+from befund import appetizer_hebel
+
 # Markenfarben (identisch zur App)
 DUNKEL = colors.HexColor("#1a2332")
 GOLD = colors.HexColor("#c9a84c")
@@ -127,10 +129,14 @@ def erzeuge_kurzbefund_pdf(lead: dict, befund: dict) -> bytes:
     teile += [Paragraph("Die drei Prüfbereiche im Detail", STYLES["h2"]),
               Spacer(1, 2 * mm), _signaltabelle(befund), Spacer(1, 5 * mm)]
 
-    if befund["empfehlungen"]:
-        teile.append(Paragraph("Was jetzt zu tun ist", STYLES["h2"]))
+    # Gratis-PDF: nur den wunden Punkt + seine Folge nennen (Appetizer), nicht
+    # das Rezept — das volle "Was jetzt zu tun ist" (befund["empfehlungen"])
+    # bleibt dem bezahlten Paket vorbehalten.
+    hebel = appetizer_hebel(befund)
+    if hebel:
+        teile.append(Paragraph("Wo noch Potenzial liegt", STYLES["h2"]))
         teile.append(Spacer(1, 2 * mm))
-        for i, e in enumerate(befund["empfehlungen"], 1):
+        for i, e in enumerate(hebel, 1):
             teile.append(Paragraph(f"<b>{i}.</b> {e}", STYLES["normal"]))
             teile.append(Spacer(1, 1.5 * mm))
         teile.append(Spacer(1, 3 * mm))
