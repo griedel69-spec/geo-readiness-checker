@@ -3,7 +3,7 @@ Gemeinsame GEO-Prüf-Logik — übernommen aus dem geo-radar-Repo.
 
 HERKUNFT (nicht hier weiterentwickeln!):
     Repo:   github.com/griedel69-spec/geo-radar (privat)
-    Stand:  Commit 56d2d4d8b1d189d754d76ea19e72553b3a831d1c (14.09.2026)
+    Stand:  Commit 4690b5ca8367abc93b870b56ec614f20be5f1fa8 (15.11.2026)
     Dateien: src/signal1_robots.py, src/signal2_schema.py,
              src/signal3_rendering.py, src/netz_diagnose.py
 
@@ -18,22 +18,18 @@ Module es importieren (klartextliche Fehlerdiagnose bei UNBEKANNT). Es hängt
 nur an `requests` (im Checker ohnehin vorhanden) und braucht keine weitere
 Abhängigkeit.
 
-CHECKER-LOKALE ABWEICHUNG vom gepinnten Stand (NOCH NICHT in geo-radar!):
-  - signal2_schema.py: Schindler-Fix. Signal 2 erkennt jetzt SICHTBARE
+Ergebnis-relevante Änderung seit dem vorigen Stand (56d2d4d, 14.09.2026):
+  - Signal 2 Schindler-Fix (geo-radar PR #58): erkennt jetzt SICHTBARE
     FAQ-Inhalte ohne FAQPage-Markup (hat_sichtbaren_faq_inhalt) und weist sie
     ehrlich als "FAQ-Inhalte vorhanden, aber ohne FAQPage-Auszeichnung" aus,
     statt "keine FAQPage" zu behaupten. Grund: ein Betrieb mit guter, nur
     nicht ausgezeichneter FAQ-Seite (Fall hotel-schindler.at: /faq mit 29
     Fragen) soll nicht lesen, ihm fehle die FAQ. Die Phrase "keine FAQPage"
-    (Produktions-Weiche bausteine_aus_befund) bleibt nur dem echten Fehlfall
+    (Produktions-Weiche bausteine_aus_befund) bleibt dem echten Fehlfall
     (keine FAQ-Inhalte) vorbehalten; Ampel bleibt GELB (Markup fehlt weiter).
-    → Diesen Fix nach geo-radar/src/signal2_schema.py zurückportieren, dort
-      die Produktions-Weiche auf den neuen "FAQ-Inhalte vorhanden"-Fall
-      einstellen (dann FAQ-Baustein = bestehende FAQ auszeichnen statt neue
-      erfinden), danach beide Dateien wieder angleichen und den Commit-Stand
-      oben aktualisieren.
+    Der Fix ist in geo-radar und hier wieder deckungsgleich.
 
-Ergebnis-relevante Änderungen seit dem vorigen Stand (c6546a3, 21.07.2026):
+Ergebnis-relevante Änderungen im Stand davor (56d2d4d, gegenüber c6546a3, 21.07.2026):
   - Signal 2 erkennt zusätzlich die Lodging-Typen Campground und Motel
     (ein Campingplatz/Motel mit korrektem Schema-Datensatz bekam vorher
     fälschlich ROT statt GRÜN).
