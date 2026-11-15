@@ -104,3 +104,115 @@ def test_check_schema_glocknerhof_regression(monkeypatch):
     assert res.has_faqpage is True
     assert res.faqpage_quelle == "/zimmer-preise/wissenswertes-faq/"
     assert "keine FAQPage" not in res.reason
+
+
+# ---------------------------------------------------------------------------
+# Schindler-Regression: sichtbare FAQ-Seite OHNE FAQPage-Markup darf nicht
+# mehr als "keine FAQPage" / fehlende FAQ gemeldet werden. Der Betrieb
+# (hotel-schindler.at) hatte eine umfangreiche /faq (29 Fragen), aber kein
+# FAQPage-JSON-LD — der Befund "keine FAQPage" war technisch korrekt, für den
+# Betrieb aber peinlich (es wirkt, als fehle die FAQ, die sichtbar dasteht).
+# ---------------------------------------------------------------------------
+
+# Hotel-Startseite mit vollständiger Lodging-Entität -> GELB (kein FAQPage,
+# kein sameAs). Verlinkt auf /faq.
+_SCHINDLER_STARTSEITE = """<html><head>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"Hotel","name":"Hotel Schindler",
+ "address":{"@type":"PostalAddress","streetAddress":"Dorf 1","addressLocality":"Ort"},
+ "telephone":"+43 1 234","url":"https://hotel-schindler.at","image":"https://hotel-schindler.at/b.jpg",
+ "geo":{"@type":"GeoCoordinates","latitude":47.1,"longitude":12.1}}
+</script></head><body>
+<a href="/faq">Häufige Fragen</a>
+</body></html>"""
+
+# FAQ-Unterseite: sichtbare Accordion-Fragen, aber KEIN FAQPage-JSON-LD.
+_SCHINDLER_FAQ_SEITE = """<html><head><title>Das Schindler FAQ</title></head><body>
+<h1>Das Schindler FAQ</h1>
+<div class="faq-module">
+  <button class="faq__trigger" role="button" data-gtm-label="Gibt es WLAN?">Gibt es WLAN?</button>
+  <button class="faq__trigger" role="button" data-gtm-label="Gibt es eine Sauna?">Gibt es eine Sauna?</button>
+  <button class="faq__trigger" role="button">Ab wann steht mein Zimmer bereit?</button>
+  <button class="faq__trigger" role="button">Gibt es einen Parkplatz?</button>
+  <button class="faq__trigger" role="button">Kann ich Ski mieten?</button>
+</div>
+</body></html>"""
+
+
+def test_hat_sichtbaren_faq_inhalt_positiv_und_negativ():
+    assert signal2_schema.hat_sichtbaren_faq_inhalt(_SCHINDLER_FAQ_SEITE) is True
+    # Startseite ohne Accordion/Frage-Trigger -> kein FAQ-Inhalt
+    assert signal2_schema.hat_sichtbaren_faq_inhalt(_SCHINDLER_STARTSEITE) is False
+    assert signal2_schema.hat_sichtbaren_faq_inhalt(LODGING_OK) is False
+
+
+def test_evaluate_html_faq_inhalt_extern_statt_keine_faqpage():
+    res = signal2_schema.evaluate_html(
+        _SCHINDLER_STARTSEITE, 200, domain="hotel-schindler.at",
+        faq_inhalt_extern="/faq")
+    assert res.has_faqpage is False
+    assert res.faq_inhalt_quelle == "/faq"
+    assert "keine FAQPage" not in res.reason
+    assert "FAQ-Inhalte" in res.reason
+    assert "/faq" in res.reason
+
+
+def test_evaluate_html_faq_inhalt_auf_startseite_erkannt():
+    # Lodging-Entität + sichtbare FAQ im Body derselben Seite
+    html = _SCHINDLER_STARTSEITE.replace(
+        '<a href="/faq">Häufige Fragen</a>',
+        _SCHINDLER_FAQ_SEITE.split("<body>", 1)[1].rsplit("</body>", 1)[0])
+    res = signal2_schema.evaluate_html(html, 200, domain="hotel-schindler.at")
+    assert res.faq_inhalt_quelle == "Startseite"
+    assert "keine FAQPage" not in res.reason
+    assert "FAQ-Inhalte" in res.reason
+
+
+def test_check_schema_schindler_sichtbare_faq_ohne_markup(monkeypatch):
+    class _Resp:
+        def __init__(self, url, text, status=200):
+            self.url, self.text, self.status_code = url, text, status
+
+    def fake_fetch_html(domain, user_agent=None, timeout=None, **_kw):
+        return ("https://www.hotel-schindler.at/", _SCHINDLER_STARTSEITE, 200, "")
+
+    def fake_get(url, **_kw):
+        if url.rstrip("/").endswith("/faq"):
+            return _Resp("https://www.hotel-schindler.at/faq", _SCHINDLER_FAQ_SEITE)
+        return _Resp(url, "<html></html>", 404)
+
+    monkeypatch.setattr(signal2_schema, "_fetch_html", fake_fetch_html)
+    monkeypatch.setattr(signal2_schema.requests, "get", fake_get)
+
+    res = check_schema("hotel-schindler.at")
+    assert res.overall_status == "GELB"           # Markup fehlt weiter -> GELB
+    assert res.has_faqpage is False
+    assert res.faq_inhalt_quelle == "/faq"
+    assert "keine FAQPage" not in res.reason
+    assert "FAQ-Inhalte" in res.reason
+
+
+def test_check_schema_echt_keine_faq_behaelt_phrase(monkeypatch):
+    """Ohne jede FAQ (weder Markup noch Inhalt) bleibt 'keine FAQPage' erhalten
+    — die Produktions-Weiche (bausteine_aus_befund) hängt an dieser Phrase."""
+    class _Resp:
+        def __init__(self, url, text, status=200):
+            self.url, self.text, self.status_code = url, text, status
+
+    # Startseite ohne FAQ-Link, Lodging-Entität -> GELB
+    startseite = _SCHINDLER_STARTSEITE.replace(
+        '<a href="/faq">Häufige Fragen</a>', "<p>Willkommen</p>")
+
+    def fake_fetch_html(domain, user_agent=None, timeout=None, **_kw):
+        return ("https://www.example.at/", startseite, 200, "")
+
+    def fake_get(url, **_kw):
+        # Standard-Pfade (/faq, /faqs, ...) existieren nicht
+        return _Resp(url, "<html><body>nix</body></html>", 404)
+
+    monkeypatch.setattr(signal2_schema, "_fetch_html", fake_fetch_html)
+    monkeypatch.setattr(signal2_schema.requests, "get", fake_get)
+
+    res = check_schema("example.at")
+    assert res.faq_inhalt_quelle is None
+    assert "keine FAQPage" in res.reason

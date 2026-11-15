@@ -172,6 +172,14 @@ class SchemaResult:
     # (z. B. "/zimmer-preise/wissenswertes-faq/"). None = Startseite oder
     # gar nicht gefunden.
     faqpage_quelle: Optional[str] = None
+    # Wo SICHTBARE FAQ-Inhalte (ohne FAQPage-Markup) gefunden wurden —
+    # "Startseite" oder ein Unterseiten-Pfad (z. B. "/faq"). Nur gesetzt,
+    # wenn has_faqpage=False. Hält den Befund ehrlich: ein Betrieb mit
+    # umfangreicher, aber nicht ausgezeichneter FAQ-Seite bekommt nicht
+    # länger "keine FAQPage" vorgehalten (Fall hotel-schindler.at: /faq mit
+    # 29 Fragen, aber ohne FAQPage-JSON-LD), sondern "FAQ-Inhalte vorhanden,
+    # aber ohne FAQPage-Auszeichnung".
+    faq_inhalt_quelle: Optional[str] = None
     overall_status: str = "UNBEKANNT"  # GRÜN | GELB | ROT | UNBEKANNT
     reason: str = ""
 
@@ -471,6 +479,7 @@ def evaluate_html(
     domain: str = "",
     fetched_url: Optional[str] = None,
     faqpage_extern: Optional[str] = None,
+    faq_inhalt_extern: Optional[str] = None,
     betriebstyp: str = "unterkunft",
 ) -> SchemaResult:
     """
@@ -482,6 +491,13 @@ def evaluate_html(
     gehört laut Google-Richtlinie auf die FAQ-Seite selbst, nicht auf die
     Startseite — die frühere Nur-Startseiten-Prüfung hat korrekt
     ausgezeichnete Websites fälschlich mit 'keine FAQPage' bemängelt).
+
+    faq_inhalt_extern: Pfad einer Unterseite, auf der SICHTBARE FAQ-Inhalte
+    (Fragen & Antworten) gefunden wurden, aber OHNE FAQPage-Markup
+    (Schindler-Fix). Dann weist der Befund die FAQ ehrlich als "vorhanden,
+    aber nicht ausgezeichnet" aus statt als fehlend — ein Betrieb mit guter,
+    nur nicht maschinenlesbar strukturierter FAQ-Seite soll nicht lesen, ihm
+    fehle die FAQ, wenn sie sichtbar auf der Seite steht.
 
     betriebstyp: "unterkunft" (Default, unverändertes Verhalten) oder
     "ausflugsziel" — siehe ATTRAKTION_TYPES. Ausflugsziele (Museen,
@@ -538,6 +554,16 @@ def evaluate_html(
     if not result.has_faqpage and faqpage_extern:
         result.has_faqpage = True
         result.faqpage_quelle = faqpage_extern
+
+    # Sichtbare FAQ-Inhalte ohne Markup ehrlich festhalten (Schindler-Fix) —
+    # nur relevant, solange gar kein FAQPage-Markup gefunden wurde. Vorrang:
+    # ausdrücklich übergebene Unterseiten-Fundstelle (aus check_schema), sonst
+    # die Startseite selbst prüfen.
+    if not result.has_faqpage:
+        if faq_inhalt_extern:
+            result.faq_inhalt_quelle = faq_inhalt_extern
+        elif hat_sichtbaren_faq_inhalt(html):
+            result.faq_inhalt_quelle = "Startseite"
 
     if not kern_entities:
         result.overall_status = "ROT"
@@ -598,7 +624,21 @@ def evaluate_html(
         if missing_core:
             gaps.append("Kernfelder fehlen: " + ", ".join(missing_core))
         if not result.has_faqpage:
-            gaps.append("keine FAQPage")
+            if result.faq_inhalt_quelle:
+                # Ehrlich: die FAQ ist da, nur nicht maschinenlesbar
+                # ausgezeichnet. KEIN "keine FAQPage" — das liest sich für
+                # einen Betrieb mit sichtbarer FAQ-Seite wie ein Fehler des
+                # Checks. Die Phrase "keine FAQPage" (Produktions-Weiche)
+                # bleibt bewusst nur dem echten Fehlfall (keine FAQ-Inhalte)
+                # vorbehalten.
+                ort = result.faq_inhalt_quelle
+                wo = "auf der Startseite" if ort == "Startseite" else f"auf {ort}"
+                gaps.append(
+                    f"FAQ-Inhalte {wo} vorhanden, aber ohne maschinenlesbare "
+                    "FAQPage-Auszeichnung (Markup)"
+                )
+            else:
+                gaps.append("keine FAQPage")
         if not has_sa:
             gaps.append("kein sameAs")
         result.overall_status = "GELB"
@@ -695,14 +735,78 @@ def hat_faqpage_markup(html: str) -> bool:
     return False
 
 
+# FAQ-Inhalt-Erkennung (Schindler-Fix) ----------------------------------------
+# Deterministische, bewusst konservative Heuristik für SICHTBARE FAQ-Inhalte
+# ohne FAQPage-Markup. Zweck: der Befund soll einem Betrieb mit guter FAQ-Seite
+# nicht "keine FAQPage" / "FAQ fehlt" vorhalten. Wir zählen echte Frage-Trigger
+# (Überschriften/Accordion-/Toggle-Elemente, deren Text auf "?" endet) — nicht
+# beliebigen Fließtext mit Fragezeichen, damit keine Marketing-Floskel
+# fälschlich als FAQ zählt (Null-Halluzinations-Prinzip).
+_FAQ_INHALT_SCHWELLE = 4          # ab so vielen Frage-Triggern: FAQ-Inhalt
+_FAQ_INHALT_SCHWELLE_MIT_KW = 2   # weniger genügt mit FAQ-Überschrift/-Titel
+_FAQ_UEBERSCHRIFT_SCHLUESSEL = (
+    "faq", "häufige fragen", "haeufige fragen", "haufige fragen",
+    "oft gestellte", "fragen & antworten", "fragen und antworten",
+    "wissenswert",
+)
+_FRAGE_ELEMENTE = ("h2", "h3", "h4", "h5", "summary", "dt", "button", "strong")
+_FRAGE_KLASSEN = (
+    "faq", "frage", "question", "accordion", "akkordeon",
+    "toggle", "collaps", "folding", "panel", "spoiler",
+)
+
+
+def _faq_frage_texte(soup: BeautifulSoup) -> set[str]:
+    """Sammelt plausible Frage-Texte: aus typischen Überschrifts-/Accordion-
+    Elementen, zusätzlich aria-label/data-gtm-label (viele CMS tragen die
+    Frage dort). Nur Texte, die auf '?' enden und kurz genug sind."""
+    elemente = list(soup.find_all(_FRAGE_ELEMENTE))
+    elemente += soup.find_all(attrs={"role": "button"})
+    for el in soup.find_all(attrs={"class": True}):
+        klass = " ".join(el.get("class")).lower()
+        if any(k in klass for k in _FRAGE_KLASSEN):
+            elemente.append(el)
+
+    fragen: set[str] = set()
+    for el in elemente:
+        for roh in (el.get_text(" ", strip=True),
+                    el.get("aria-label", ""),
+                    el.get("data-gtm-label", "")):
+            t = (roh or "").strip()
+            if t.endswith("?") and 8 <= len(t) <= 160:
+                fragen.add(t)
+    return fragen
+
+
+def hat_sichtbaren_faq_inhalt(html: str) -> bool:
+    """True, wenn die Seite erkennbar eine FAQ-Sektion zeigt (Fragen & Antworten),
+    auch ohne FAQPage-JSON-LD. Konservativ: lieber False als ein Fehlurteil."""
+    try:
+        soup = BeautifulSoup(html, "lxml")
+    except Exception:
+        return False
+    fragen = _faq_frage_texte(soup)
+    if len(fragen) >= _FAQ_INHALT_SCHWELLE:
+        return True
+    if len(fragen) >= _FAQ_INHALT_SCHWELLE_MIT_KW:
+        for el in soup.find_all(("title", "h1", "h2", "h3")):
+            t = el.get_text(" ", strip=True).lower()
+            if any(k in t for k in _FAQ_UEBERSCHRIFT_SCHLUESSEL):
+                return True
+    return False
+
+
 def _pruefe_faq_unterseiten(
     kandidaten: list[str], dom: str,
     user_agent: str, timeout: int,
-) -> tuple[Optional[str], int]:
+) -> tuple[Optional[str], Optional[str], int]:
     """
-    Ruft die Kandidaten-URLs ab und sucht FAQPage-Markup. Rückgabe:
-    (Pfad_der_Fundstelle_oder_None, Anzahl_geprüfter_Seiten).
-    Weiterleitungen auf fremde Domains werden verworfen (Domain-Riegel).
+    Ruft die Kandidaten-URLs ab und sucht FAQPage-Markup; merkt sich zusätzlich
+    die erste Unterseite mit SICHTBAREN FAQ-Inhalten (ohne Markup). Rückgabe:
+    (Markup_Pfad_oder_None, Inhalt_Pfad_oder_None, Anzahl_geprüfter_Seiten).
+    Markup hat Vorrang — findet sich echtes FAQPage-Markup, wird sofort
+    zurückgegeben. Weiterleitungen auf fremde Domains werden verworfen
+    (Domain-Riegel).
     """
     from urllib.parse import urlparse
     import time as _time
@@ -713,6 +817,7 @@ def _pruefe_faq_unterseiten(
         "Accept-Language": "de-AT,de;q=0.9,en;q=0.7",
     }
     geprueft = 0
+    inhalt_quelle: Optional[str] = None
     for i, url in enumerate(kandidaten):
         if i > 0:
             _time.sleep(0.3)  # höflich zwischen Requests
@@ -726,9 +831,12 @@ def _pruefe_faq_unterseiten(
         if not _gleiche_domain(urlparse(r.url).netloc, dom):
             continue
         geprueft += 1
+        pfad = urlparse(r.url).path or "/"
         if hat_faqpage_markup(r.text):
-            return urlparse(r.url).path or "/", geprueft
-    return None, geprueft
+            return pfad, inhalt_quelle, geprueft
+        if inhalt_quelle is None and hat_sichtbaren_faq_inhalt(r.text):
+            inhalt_quelle = pfad
+    return None, inhalt_quelle, geprueft
 
 
 # -----------------------------------------------------------------------------
@@ -780,17 +888,27 @@ def check_schema(
     if result.overall_status == "GELB" and not result.has_faqpage:
         kandidaten = finde_faq_kandidaten(html or "", final_url, dom)
         if kandidaten:
-            quelle, geprueft = _pruefe_faq_unterseiten(
+            quelle, inhalt_quelle, geprueft = _pruefe_faq_unterseiten(
                 kandidaten, dom, user_agent, timeout)
             if quelle:
+                # Gültiges FAQPage-Markup auf einer Unterseite -> GRÜN-Beitrag.
                 result = evaluate_html(html or "", status or 200, dom,
                                        final_url, faqpage_extern=quelle,
                                        betriebstyp=betriebstyp)
-            elif geprueft:
-                # Ehrlich präzisieren: nicht nur die Startseite wurde
-                # geprüft. Der Wortlaut "keine FAQPage" bleibt erhalten —
-                # die Produktions-Weiche (bausteine_aus_befund) hängt an
-                # genau dieser Phrase.
+            elif inhalt_quelle and not result.faq_inhalt_quelle:
+                # Kein Markup, aber eine sichtbare FAQ-Seite (Schindler-Fix):
+                # ehrlich als "FAQ-Inhalte vorhanden, aber nicht ausgezeichnet"
+                # ausweisen statt "keine FAQPage". Nur, wenn die Startseite
+                # nicht schon selbst FAQ-Inhalte gezeigt hat.
+                result = evaluate_html(html or "", status or 200, dom,
+                                       final_url, faq_inhalt_extern=inhalt_quelle,
+                                       betriebstyp=betriebstyp)
+            elif geprueft and not result.faq_inhalt_quelle:
+                # Weder Markup noch sichtbare FAQ-Inhalte gefunden — ehrlich
+                # präzisieren, dass nicht nur die Startseite geprüft wurde.
+                # Der Wortlaut "keine FAQPage" bleibt hier erhalten (nur im
+                # echten Fehlfall): die Produktions-Weiche (bausteine_aus_befund)
+                # hängt an genau dieser Phrase.
                 result.reason = result.reason.replace(
                     "keine FAQPage",
                     f"keine FAQPage (Startseite + {geprueft} "
@@ -845,11 +963,18 @@ def format_report(res: SchemaResult) -> str:
     else:
         lines.append("Lodging-Entität: KEINE gefunden")
 
-    fp_mark = "OK   " if res.has_faqpage else "FEHLT"
-    if res.faqpage_quelle:
-        fp_text = f"vorhanden (auf {res.faqpage_quelle})"
+    if res.has_faqpage:
+        fp_mark = "OK   "
+        fp_text = f"vorhanden (auf {res.faqpage_quelle})" if res.faqpage_quelle else "vorhanden"
+    elif res.faq_inhalt_quelle:
+        fp_mark = "INFO "
+        wo = ("auf der Startseite" if res.faq_inhalt_quelle == "Startseite"
+              else f"auf {res.faq_inhalt_quelle}")
+        fp_text = (f"FAQ-Inhalte {wo} vorhanden, aber ohne "
+                   "FAQPage-Auszeichnung (Markup)")
     else:
-        fp_text = "vorhanden" if res.has_faqpage else "nicht vorhanden"
+        fp_mark = "FEHLT"
+        fp_text = "nicht vorhanden"
     lines.append("")
     lines.append(f"[{fp_mark}] FAQPage: {fp_text}")
 
