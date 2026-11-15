@@ -18,6 +18,21 @@ Module es importieren (klartextliche Fehlerdiagnose bei UNBEKANNT). Es hängt
 nur an `requests` (im Checker ohnehin vorhanden) und braucht keine weitere
 Abhängigkeit.
 
+CHECKER-LOKALE ABWEICHUNG vom gepinnten Stand (NOCH NICHT in geo-radar!):
+  - signal2_schema.py: Schindler-Fix. Signal 2 erkennt jetzt SICHTBARE
+    FAQ-Inhalte ohne FAQPage-Markup (hat_sichtbaren_faq_inhalt) und weist sie
+    ehrlich als "FAQ-Inhalte vorhanden, aber ohne FAQPage-Auszeichnung" aus,
+    statt "keine FAQPage" zu behaupten. Grund: ein Betrieb mit guter, nur
+    nicht ausgezeichneter FAQ-Seite (Fall hotel-schindler.at: /faq mit 29
+    Fragen) soll nicht lesen, ihm fehle die FAQ. Die Phrase "keine FAQPage"
+    (Produktions-Weiche bausteine_aus_befund) bleibt nur dem echten Fehlfall
+    (keine FAQ-Inhalte) vorbehalten; Ampel bleibt GELB (Markup fehlt weiter).
+    → Diesen Fix nach geo-radar/src/signal2_schema.py zurückportieren, dort
+      die Produktions-Weiche auf den neuen "FAQ-Inhalte vorhanden"-Fall
+      einstellen (dann FAQ-Baustein = bestehende FAQ auszeichnen statt neue
+      erfinden), danach beide Dateien wieder angleichen und den Commit-Stand
+      oben aktualisieren.
+
 Ergebnis-relevante Änderungen seit dem vorigen Stand (c6546a3, 21.07.2026):
   - Signal 2 erkennt zusätzlich die Lodging-Typen Campground und Motel
     (ein Campingplatz/Motel mit korrektem Schema-Datensatz bekam vorher
